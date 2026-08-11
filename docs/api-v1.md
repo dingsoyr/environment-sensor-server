@@ -160,6 +160,15 @@ The device sends its current `config_version` with every upload.
 
 If the server configuration version is newer, the server may include the new configuration in the response.
 
+The `configuration` object is only included when a complete server-managed
+configuration is available. If the server has a newer `config_version` but
+the configuration is incomplete, for example because `device_name` has not
+yet been set, the server omits `configuration` while still returning the
+newer server-side `config_version`.
+
+The device must not update its local `config_version` unless a
+`configuration` object is received and successfully applied.
+
 The initial configurable fields are:
 
 | Field | Type | Description |
