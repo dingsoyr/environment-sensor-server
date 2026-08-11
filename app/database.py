@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import os
 import sqlite3
 from pathlib import Path
@@ -7,6 +8,13 @@ from pathlib import Path
 
 DEFAULT_DATABASE_PATH = Path("data/environment.db")
 DATABASE_PATH_ENV_VAR = "ENVIRONMENT_SENSOR_DATABASE_PATH"
+
+
+@dataclass(frozen=True)
+class DeviceConfigurationRecord:
+    config_version: int
+    device_name: str | None
+    measurement_interval_seconds: int
 
 
 def get_database_path(database_path: str | Path | None = None) -> Path:
@@ -63,3 +71,27 @@ def initialize_database(database_path: str | Path | None = None) -> Path:
         )
 
     return resolved_path
+
+
+def get_device_configuration(
+    device_id: str,
+    database_path: str | Path | None = None,
+) -> DeviceConfigurationRecord | None:
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT config_version, device_name, measurement_interval_seconds
+            FROM devices
+            WHERE device_id = ?
+            """,
+            (device_id,),
+        ).fetchone()
+
+    if row is None:
+        return None
+
+    return DeviceConfigurationRecord(
+        config_version=row[0],
+        device_name=row[1],
+        measurement_interval_seconds=row[2],
+    )

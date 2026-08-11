@@ -7,8 +7,12 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 
-from app.api_v1_models import MeasurementUploadRequest, MeasurementUploadResponse
-from app.database import initialize_database
+from app.api_v1_models import (
+    DeviceConfiguration,
+    MeasurementUploadRequest,
+    MeasurementUploadResponse,
+)
+from app.database import get_device_configuration, initialize_database
 from app.measurement_ingestion import ingest_measurement_upload
 
 
@@ -43,11 +47,29 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         except sqlite3.DatabaseError as error:
             raise HTTPException(status_code=500, detail="Internal Server Error") from error
 
+        device_configuration = get_device_configuration(
+            upload.device_id,
+            database_path=request.app.state.database_path,
+        )
+        if device_configuration is None:
+            raise HTTPException(status_code=500, detail="Internal Server Error")
+
+        configuration = None
+        if (
+            device_configuration.config_version > upload.config_version
+            and device_configuration.device_name is not None
+        ):
+            configuration = DeviceConfiguration(
+                device_name=device_configuration.device_name,
+                measurement_interval_seconds=device_configuration.measurement_interval_seconds,
+            )
+
         return MeasurementUploadResponse(
             api_version=1,
             acknowledged_through=result.acknowledged_through,
             server_time=result.server_time,
-            config_version=result.config_version,
+            config_version=device_configuration.config_version,
+            configuration=configuration,
         )
 
     return app

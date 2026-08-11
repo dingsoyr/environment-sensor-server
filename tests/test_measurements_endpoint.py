@@ -61,6 +61,7 @@ def test_valid_post_returns_response_and_persists_measurements(
         "server_time": 1_786_303_653,
         "config_version": 2,
     }
+    assert "configuration" not in response.json()
 
     with connect_database(database_path) as connection:
         measurement_rows = connection.execute(
@@ -85,6 +86,42 @@ def test_response_uses_server_stored_config_version(tmp_path: Path, monkeypatch)
 
     assert response.status_code == 200
     assert response.json()["config_version"] == 5
+    assert "configuration" not in response.json()
+
+
+def test_newer_server_config_with_device_name_returns_configuration(
+    tmp_path: Path, monkeypatch
+) -> None:
+    database_path = tmp_path / "environment.db"
+
+    with create_client(database_path, monkeypatch) as client:
+        with connect_database(database_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO devices (
+                    device_id,
+                    device_name,
+                    config_version,
+                    measurement_interval_seconds
+                )
+                VALUES (?, ?, ?, ?)
+                """,
+                ("sensor-d8cbb0", "Outdoor sensor", 5, 1800),
+            )
+
+        response = client.post("/api/v1/measurements", json=make_request_payload())
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "api_version": 1,
+        "acknowledged_through": 722,
+        "server_time": 1_786_303_653,
+        "config_version": 5,
+        "configuration": {
+            "device_name": "Outdoor sensor",
+            "measurement_interval_seconds": 1800,
+        },
+    }
 
 
 def test_repeated_identical_post_is_idempotent(tmp_path: Path, monkeypatch) -> None:
