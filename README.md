@@ -104,6 +104,118 @@ FastAPI automatically provides interactive API documentation at:
 http://127.0.0.1:8000/docs
 ```
 
+## WSL2 network access for local devices
+
+The default development setup above is enough when you only access the server from the same machine.
+
+If you want to reach the FastAPI development server from other devices on your local network, such as ESP32 devices or mobile phones, use the manual setup below.
+
+This is a development-only setup for WSL2 and is not the final Raspberry Pi deployment configuration.
+
+### 1. Uvicorn must listen on all interfaces
+
+Start the development server with:
+
+```bash
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+The `0.0.0.0` value is only the bind address used by Uvicorn inside WSL.
+
+Clients must not use `http://0.0.0.0:8000`. Use the Windows PC LAN IP when connecting from ESP32 devices, phones, or other computers.
+
+### 2. WSL2 mirrored networking
+
+On Windows, create or edit:
+
+```text
+%USERPROFILE%\.wslconfig
+```
+
+with:
+
+```ini
+[wsl2]
+networkingMode=mirrored
+
+[experimental]
+hostAddressLoopback=true
+```
+
+After changing `.wslconfig`, restart WSL from PowerShell:
+
+```powershell
+wsl --shutdown
+```
+
+Then start Ubuntu / WSL again.
+
+### 3. Hyper-V firewall rule
+
+With mirrored networking enabled, inbound traffic may still be blocked because the default Hyper-V inbound policy for WSL is typically `Block`.
+
+From an elevated PowerShell, inspect the current WSL Hyper-V firewall policy:
+
+```powershell
+Get-NetFirewallHyperVVMSetting -PolicyStore ActiveStore -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}'
+```
+
+To allow inbound TCP traffic to the development server on port 8000, add this rule:
+
+```powershell
+New-NetFirewallHyperVRule `
+  -Name "WSL-Uvicorn-8000" `
+  -DisplayName "WSL Uvicorn 8000" `
+  -Direction Inbound `
+  -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' `
+  -Protocol TCP `
+  -LocalPorts 8000
+```
+
+This keeps the default inbound policy blocked and only opens TCP port `8000` for the development server.
+
+### 4. Verify access
+
+Inside WSL:
+
+```bash
+ss -ltnp | grep 8000
+curl http://127.0.0.1:8000/health
+```
+
+From Windows:
+
+```powershell
+curl.exe http://<WINDOWS-LAN-IP>:8000/health
+```
+
+From another device on the same Wi-Fi, open:
+
+```text
+http://<WINDOWS-LAN-IP>:8000/health
+```
+
+Expected response:
+
+```text
+{"status":"ok"}
+```
+
+### 5. Development server address
+
+During development, ESP32 devices should send measurements to the Windows PC LAN IP, for example:
+
+```text
+http://192.168.x.x:8000/api/v1/measurements
+```
+
+Do not treat that example IP as a permanent production address.
+
+- `localhost` only works on the same machine.
+- ESP32 and mobile clients must use the PC's LAN IP.
+- The LAN IP may change if DHCP assigns a new address.
+- This is for development in WSL2 only, not for the final Raspberry Pi deployment.
+
 ## Run tests
 
 ```bash
