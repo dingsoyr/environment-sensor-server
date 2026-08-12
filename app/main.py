@@ -16,6 +16,8 @@ from app.api_v1_models import (
 )
 from app.dashboard_models import (
     DashboardLatestMeasurement,
+    DashboardSensorConfigurationPatchRequest,
+    DashboardSensorConfigurationPatchResponse,
     DashboardSensorConfiguration,
     DashboardSensorDetail,
     DashboardSensorHistoryPoint,
@@ -30,6 +32,8 @@ from app.database import (
     initialize_database,
     list_dashboard_sensor_history,
     list_dashboard_sensors,
+    UNSET,
+    update_dashboard_sensor_configuration,
 )
 from app.measurement_ingestion import ingest_measurement_upload
 
@@ -146,6 +150,45 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
                 config_sync_state=sensor_record.config_sync_state,
             ),
             latest_measurement=latest_measurement,
+        )
+
+    @app.patch(
+        "/api/dashboard/sensors/{device_id}/configuration",
+        response_model=DashboardSensorConfigurationPatchResponse,
+    )
+    def patch_dashboard_sensor_configuration(
+        device_id: str,
+        patch_request: DashboardSensorConfigurationPatchRequest,
+        request: Request,
+    ) -> DashboardSensorConfigurationPatchResponse:
+        try:
+            configuration_record = update_dashboard_sensor_configuration(
+                device_id,
+                device_name=(
+                    patch_request.device_name
+                    if "device_name" in patch_request.model_fields_set
+                    else UNSET
+                ),
+                measurement_interval_seconds=(
+                    patch_request.measurement_interval_seconds
+                    if "measurement_interval_seconds" in patch_request.model_fields_set
+                    else UNSET
+                ),
+                database_path=request.app.state.database_path,
+            )
+        except sqlite3.DatabaseError as error:
+            raise HTTPException(status_code=500, detail="Internal Server Error") from error
+
+        if configuration_record is None:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        return DashboardSensorConfigurationPatchResponse(
+            device_id=configuration_record.device_id,
+            device_name=configuration_record.device_name,
+            measurement_interval_seconds=configuration_record.measurement_interval_seconds,
+            config_version=configuration_record.config_version,
+            reported_config_version=configuration_record.reported_config_version,
+            config_sync_state=configuration_record.config_sync_state,
         )
 
     @app.get(

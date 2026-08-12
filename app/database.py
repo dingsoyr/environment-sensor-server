@@ -8,6 +8,7 @@ from pathlib import Path
 
 DEFAULT_DATABASE_PATH = Path("data/environment.db")
 DATABASE_PATH_ENV_VAR = "ENVIRONMENT_SENSOR_DATABASE_PATH"
+UNSET = object()
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,16 @@ class DashboardSensorHistoryPointRecord:
     temperature_c: float
     humidity_percent: float
     pressure_hpa: float
+
+
+@dataclass(frozen=True)
+class DashboardSensorConfigurationStateRecord:
+    device_id: str
+    device_name: str | None
+    measurement_interval_seconds: int
+    config_version: int
+    reported_config_version: int
+    config_sync_state: str
 
 
 def _build_dashboard_sensor_record(row: sqlite3.Row | tuple) -> DashboardSensorRecord:
@@ -298,3 +309,74 @@ def list_dashboard_sensor_history(
         )
         for row in rows
     ]
+
+
+def update_dashboard_sensor_configuration(
+    device_id: str,
+    *,
+    device_name: str | object = UNSET,
+    measurement_interval_seconds: int | object = UNSET,
+    database_path: str | Path | None = None,
+) -> DashboardSensorConfigurationStateRecord | None:
+    with connect_database(database_path) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(
+            """
+            SELECT device_name, measurement_interval_seconds, config_version, reported_config_version
+            FROM devices
+            WHERE device_id = ?
+            """,
+            (device_id,),
+        ).fetchone()
+
+        if row is None:
+            return None
+
+        current_device_name = row[0]
+        current_measurement_interval_seconds = row[1]
+        current_config_version = row[2]
+        current_reported_config_version = row[3]
+
+        effective_device_name = current_device_name if device_name is UNSET else device_name
+        effective_measurement_interval_seconds = (
+            current_measurement_interval_seconds
+            if measurement_interval_seconds is UNSET
+            else measurement_interval_seconds
+        )
+
+        configuration_changed = (
+            effective_device_name != current_device_name
+            or effective_measurement_interval_seconds != current_measurement_interval_seconds
+        )
+        resulting_config_version = current_config_version
+
+        if configuration_changed:
+            resulting_config_version = current_config_version + 1
+            connection.execute(
+                """
+                UPDATE devices
+                SET device_name = ?,
+                    measurement_interval_seconds = ?,
+                    config_version = ?
+                WHERE device_id = ?
+                """,
+                (
+                    effective_device_name,
+                    effective_measurement_interval_seconds,
+                    resulting_config_version,
+                    device_id,
+                ),
+            )
+
+    return DashboardSensorConfigurationStateRecord(
+        device_id=device_id,
+        device_name=effective_device_name,
+        measurement_interval_seconds=effective_measurement_interval_seconds,
+        config_version=resulting_config_version,
+        reported_config_version=current_reported_config_version,
+        config_sync_state=_derive_config_sync_state(
+            device_id=device_id,
+            config_version=resulting_config_version,
+            reported_config_version=current_reported_config_version,
+        ),
+    )
