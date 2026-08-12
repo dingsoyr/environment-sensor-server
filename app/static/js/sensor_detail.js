@@ -357,26 +357,26 @@ function renderCurrentValues(latestMeasurement) {
 function renderStatusSection(detail) {
     clearElement(statusList);
 
-    appendMetaRow(statusList, "Kontaktstatus", createContactStateBadge(detail.contact_state));
-    appendMetaRow(statusList, "Sist sett", formatLastSeen(detail.last_seen_at));
-    appendMetaRow(statusList, "Signal", formatInteger(detail.rssi_dbm, "dBm"));
-    appendMetaRow(statusList, "Firmware", detail.firmware_version || "Ukjend");
-    appendMetaRow(statusList, "Device ID", detail.device_id);
+    appendMetaRow(statusList, "Kontaktstatus:", createContactStateBadge(detail.contact_state));
+    appendMetaRow(statusList, "Sist sett:", formatLastSeen(detail.last_seen_at));
+    appendMetaRow(statusList, "Signal:", formatInteger(detail.rssi_dbm, "dBm"));
+    appendMetaRow(statusList, "Firmware:", detail.firmware_version || "Ukjend");
+    appendMetaRow(statusList, "Device ID:", detail.device_id);
 
     if (hasBatteryPercent(detail) || hasBatteryVoltage(detail)) {
-        appendMetaRow(statusList, "Batteri", createBatteryStatusContent(detail));
+        appendMetaRow(statusList, "Batteri:", createBatteryStatusContent(detail));
     } else {
         const batteryContent = createBatteryStatusContent(detail);
-        appendMetaRow(statusList, "Batteri", batteryContent);
+        appendMetaRow(statusList, "Batteri:", batteryContent);
     }
 
-    appendMetaRow(statusList, "Server config-versjon", String(detail.configuration.config_version));
+    appendMetaRow(statusList, "Server config-versjon:", String(detail.configuration.config_version));
     appendMetaRow(
         statusList,
-        "Sensor rapportert config-versjon",
+        "Sensor rapportert config-versjon:",
         String(detail.configuration.reported_config_version),
     );
-    appendMetaRow(statusList, "Synkroniseringsstatus", createStatusBadge(detail.configuration.config_sync_state));
+    appendMetaRow(statusList, "Synkroniseringsstatus:", createStatusBadge(detail.configuration.config_sync_state));
 }
 
 function renderSensorDetail(detail) {

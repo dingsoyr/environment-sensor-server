@@ -280,10 +280,10 @@ function createSensorCard(sensor) {
 
     const metaList = document.createElement("dl");
     metaList.className = "sensor-meta";
-    appendMetaRow(metaList, "Sist sett", formatLastSeen(sensor.last_seen_at));
-    appendMetaRow(metaList, "Signal", formatInteger(sensor.rssi_dbm, "dBm"));
-    appendMetaRow(metaList, "Firmware", sensor.firmware_version || "Ukjend");
-    appendMetaRow(metaList, "Batteri", createBatteryStatusContent(sensor));
+    appendMetaRow(metaList, "Sist sett:", formatLastSeen(sensor.last_seen_at));
+    appendMetaRow(metaList, "Signal:", formatInteger(sensor.rssi_dbm, "dBm"));
+    appendMetaRow(metaList, "Firmware:", sensor.firmware_version || "Ukjend");
+    appendMetaRow(metaList, "Batteri:", createBatteryStatusContent(sensor));
 
     body.appendChild(metaList);
 
