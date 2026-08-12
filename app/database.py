@@ -43,6 +43,67 @@ class DashboardSensorRecord:
     latest_measurement: LatestMeasurementRecord | None
 
 
+def _build_dashboard_sensor_record(row: sqlite3.Row | tuple) -> DashboardSensorRecord:
+    latest_measurement = None
+    if row[10] is not None:
+        latest_measurement = LatestMeasurementRecord(
+            sequence=row[10],
+            measured_at=row[11],
+            timestamp_valid=bool(row[12]),
+            temperature_c=row[13],
+            humidity_percent=row[14],
+            pressure_hpa=row[15],
+        )
+
+    return DashboardSensorRecord(
+        device_id=row[0],
+        device_name=row[1],
+        firmware_version=row[2],
+        last_seen_at=row[3],
+        rssi_dbm=row[4],
+        battery_voltage=row[5],
+        battery_percent=row[6],
+        measurement_interval_seconds=row[7],
+        config_version=row[8],
+        reported_config_version=row[9],
+        config_sync_state=_derive_config_sync_state(
+            device_id=row[0],
+            config_version=row[8],
+            reported_config_version=row[9],
+        ),
+        latest_measurement=latest_measurement,
+    )
+
+
+DASHBOARD_SENSOR_SELECT = """
+    SELECT
+        d.device_id,
+        d.device_name,
+        d.firmware_version,
+        d.last_seen_at,
+        d.rssi_dbm,
+        d.battery_voltage,
+        d.battery_percent,
+        d.measurement_interval_seconds,
+        d.config_version,
+        d.reported_config_version,
+        m.sequence,
+        m.measured_at,
+        m.timestamp_valid,
+        m.temperature_c,
+        m.humidity_percent,
+        m.pressure_hpa
+    FROM devices d
+    LEFT JOIN measurements m
+      ON m.device_id = d.device_id
+     AND m.sequence = (
+         SELECT MAX(m2.sequence)
+         FROM measurements m2
+         WHERE m2.device_id = d.device_id
+     )
+"""
+
+
 def get_database_path(database_path: str | Path | None = None) -> Path:
     if database_path is not None:
         return Path(database_path)
@@ -143,68 +204,29 @@ def list_dashboard_sensors(
 ) -> list[DashboardSensorRecord]:
     with connect_database(database_path) as connection:
         rows = connection.execute(
-            """
-            SELECT
-                d.device_id,
-                d.device_name,
-                d.firmware_version,
-                d.last_seen_at,
-                d.rssi_dbm,
-                d.battery_voltage,
-                d.battery_percent,
-                d.measurement_interval_seconds,
-                d.config_version,
-                d.reported_config_version,
-                m.sequence,
-                m.measured_at,
-                m.timestamp_valid,
-                m.temperature_c,
-                m.humidity_percent,
-                m.pressure_hpa
-            FROM devices d
-            LEFT JOIN measurements m
-              ON m.device_id = d.device_id
-             AND m.sequence = (
-                 SELECT MAX(m2.sequence)
-                 FROM measurements m2
-                 WHERE m2.device_id = d.device_id
-             )
+            DASHBOARD_SENSOR_SELECT
+            + """
             ORDER BY d.device_name, d.device_id
             """
         ).fetchall()
 
-    sensors: list[DashboardSensorRecord] = []
-    for row in rows:
-        latest_measurement = None
-        if row[10] is not None:
-            latest_measurement = LatestMeasurementRecord(
-                sequence=row[10],
-                measured_at=row[11],
-                timestamp_valid=bool(row[12]),
-                temperature_c=row[13],
-                humidity_percent=row[14],
-                pressure_hpa=row[15],
-            )
+    return [_build_dashboard_sensor_record(row) for row in rows]
 
-        sensors.append(
-            DashboardSensorRecord(
-                device_id=row[0],
-                device_name=row[1],
-                firmware_version=row[2],
-                last_seen_at=row[3],
-                rssi_dbm=row[4],
-                battery_voltage=row[5],
-                battery_percent=row[6],
-                measurement_interval_seconds=row[7],
-                config_version=row[8],
-                reported_config_version=row[9],
-                config_sync_state=_derive_config_sync_state(
-                    device_id=row[0],
-                    config_version=row[8],
-                    reported_config_version=row[9],
-                ),
-                latest_measurement=latest_measurement,
-            )
-        )
 
-    return sensors
+def get_dashboard_sensor(
+    device_id: str,
+    database_path: str | Path | None = None,
+) -> DashboardSensorRecord | None:
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            DASHBOARD_SENSOR_SELECT
+            + """
+            WHERE d.device_id = ?
+            """,
+            (device_id,),
+        ).fetchone()
+
+    if row is None:
+        return None
+
+    return _build_dashboard_sensor_record(row)
