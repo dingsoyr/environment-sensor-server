@@ -17,6 +17,32 @@ class DeviceConfigurationRecord:
     measurement_interval_seconds: int
 
 
+@dataclass(frozen=True)
+class LatestMeasurementRecord:
+    sequence: int
+    measured_at: int
+    timestamp_valid: bool
+    temperature_c: float
+    humidity_percent: float
+    pressure_hpa: float
+
+
+@dataclass(frozen=True)
+class DashboardSensorRecord:
+    device_id: str
+    device_name: str | None
+    firmware_version: str | None
+    last_seen_at: int | None
+    rssi_dbm: int | None
+    battery_voltage: float | None
+    battery_percent: int | None
+    measurement_interval_seconds: int
+    config_version: int
+    reported_config_version: int
+    config_sync_state: str
+    latest_measurement: LatestMeasurementRecord | None
+
+
 def get_database_path(database_path: str | Path | None = None) -> Path:
     if database_path is not None:
         return Path(database_path)
@@ -96,3 +122,89 @@ def get_device_configuration(
         device_name=row[1],
         measurement_interval_seconds=row[2],
     )
+
+
+def _derive_config_sync_state(
+    device_id: str,
+    config_version: int,
+    reported_config_version: int,
+) -> str:
+    if reported_config_version == config_version:
+        return "synced"
+
+    if reported_config_version < config_version:
+        return "waiting_for_sensor"
+
+    return "device_ahead"
+
+
+def list_dashboard_sensors(
+    database_path: str | Path | None = None,
+) -> list[DashboardSensorRecord]:
+    with connect_database(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                d.device_id,
+                d.device_name,
+                d.firmware_version,
+                d.last_seen_at,
+                d.rssi_dbm,
+                d.battery_voltage,
+                d.battery_percent,
+                d.measurement_interval_seconds,
+                d.config_version,
+                d.reported_config_version,
+                m.sequence,
+                m.measured_at,
+                m.timestamp_valid,
+                m.temperature_c,
+                m.humidity_percent,
+                m.pressure_hpa
+            FROM devices d
+            LEFT JOIN measurements m
+              ON m.device_id = d.device_id
+             AND m.sequence = (
+                 SELECT MAX(m2.sequence)
+                 FROM measurements m2
+                 WHERE m2.device_id = d.device_id
+             )
+            ORDER BY d.device_name, d.device_id
+            """
+        ).fetchall()
+
+    sensors: list[DashboardSensorRecord] = []
+    for row in rows:
+        latest_measurement = None
+        if row[10] is not None:
+            latest_measurement = LatestMeasurementRecord(
+                sequence=row[10],
+                measured_at=row[11],
+                timestamp_valid=bool(row[12]),
+                temperature_c=row[13],
+                humidity_percent=row[14],
+                pressure_hpa=row[15],
+            )
+
+        sensors.append(
+            DashboardSensorRecord(
+                device_id=row[0],
+                device_name=row[1],
+                firmware_version=row[2],
+                last_seen_at=row[3],
+                rssi_dbm=row[4],
+                battery_voltage=row[5],
+                battery_percent=row[6],
+                measurement_interval_seconds=row[7],
+                config_version=row[8],
+                reported_config_version=row[9],
+                config_sync_state=_derive_config_sync_state(
+                    device_id=row[0],
+                    config_version=row[8],
+                    reported_config_version=row[9],
+                ),
+                latest_measurement=latest_measurement,
+            )
+        )
+
+    return sensors

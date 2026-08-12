@@ -12,7 +12,16 @@ from app.api_v1_models import (
     MeasurementUploadRequest,
     MeasurementUploadResponse,
 )
-from app.database import get_device_configuration, initialize_database
+from app.dashboard_models import (
+    DashboardLatestMeasurement,
+    DashboardSensor,
+    DashboardSensorsResponse,
+)
+from app.database import (
+    get_device_configuration,
+    initialize_database,
+    list_dashboard_sensors,
+)
 from app.measurement_ingestion import ingest_measurement_upload
 
 
@@ -29,6 +38,46 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/api/dashboard/sensors", response_model=DashboardSensorsResponse)
+    def get_dashboard_sensors(request: Request) -> DashboardSensorsResponse:
+        try:
+            sensor_records = list_dashboard_sensors(
+                database_path=request.app.state.database_path,
+            )
+        except sqlite3.DatabaseError as error:
+            raise HTTPException(status_code=500, detail="Internal Server Error") from error
+
+        sensors = [
+            DashboardSensor(
+                device_id=sensor_record.device_id,
+                device_name=sensor_record.device_name,
+                firmware_version=sensor_record.firmware_version,
+                last_seen_at=sensor_record.last_seen_at,
+                rssi_dbm=sensor_record.rssi_dbm,
+                battery_voltage=sensor_record.battery_voltage,
+                battery_percent=sensor_record.battery_percent,
+                measurement_interval_seconds=sensor_record.measurement_interval_seconds,
+                config_version=sensor_record.config_version,
+                reported_config_version=sensor_record.reported_config_version,
+                config_sync_state=sensor_record.config_sync_state,
+                latest_measurement=(
+                    DashboardLatestMeasurement(
+                        sequence=sensor_record.latest_measurement.sequence,
+                        measured_at=sensor_record.latest_measurement.measured_at,
+                        timestamp_valid=sensor_record.latest_measurement.timestamp_valid,
+                        temperature_c=sensor_record.latest_measurement.temperature_c,
+                        humidity_percent=sensor_record.latest_measurement.humidity_percent,
+                        pressure_hpa=sensor_record.latest_measurement.pressure_hpa,
+                    )
+                    if sensor_record.latest_measurement is not None
+                    else None
+                ),
+            )
+            for sensor_record in sensor_records
+        ]
+
+        return DashboardSensorsResponse(sensors=sensors)
 
     @app.post(
         "/api/v1/measurements",

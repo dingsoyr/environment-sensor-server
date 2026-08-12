@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
 
-from app.database import connect_database, initialize_database
+from app.database import connect_database, initialize_database, list_dashboard_sensors
 
 
 def insert_device(database_path: Path, device_id: str) -> None:
@@ -160,3 +160,85 @@ def test_reported_config_version_must_not_be_negative(tmp_path: Path) -> None:
             pass
         else:
             raise AssertionError("expected negative reported_config_version insert to fail")
+
+
+def test_list_dashboard_sensors_returns_latest_measurement_by_highest_sequence(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "environment.db"
+    initialize_database(database_path)
+
+    with connect_database(database_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO devices (
+                device_id,
+                device_name,
+                firmware_version,
+                config_version,
+                reported_config_version,
+                measurement_interval_seconds,
+                last_seen_at,
+                rssi_dbm,
+                battery_voltage,
+                battery_percent
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("sensor-a", "Alpha", "0.1.0", 3, 3, 3600, 123, -70, None, None),
+        )
+        connection.executemany(
+            """
+            INSERT INTO measurements (
+                device_id,
+                sequence,
+                measured_at,
+                timestamp_valid,
+                temperature_c,
+                humidity_percent,
+                pressure_hpa
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                ("sensor-a", 10, 1_000, 1, 21.5, 45.0, 1013.1),
+                ("sensor-a", 11, 900, 0, 19.25, 55.0, 1012.8),
+            ],
+        )
+
+    sensors = list_dashboard_sensors(database_path)
+
+    assert len(sensors) == 1
+    assert sensors[0].config_sync_state == "synced"
+    assert sensors[0].latest_measurement is not None
+    assert sensors[0].latest_measurement.sequence == 11
+    assert sensors[0].latest_measurement.measured_at == 900
+    assert sensors[0].latest_measurement.timestamp_valid is False
+
+
+def test_list_dashboard_sensors_returns_null_latest_measurement_for_device_without_history(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "environment.db"
+    initialize_database(database_path)
+
+    with connect_database(database_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO devices (
+                device_id,
+                device_name,
+                config_version,
+                reported_config_version,
+                measurement_interval_seconds
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            ("sensor-a", "Alpha", 2, 1, 1800),
+        )
+
+    sensors = list_dashboard_sensors(database_path)
+
+    assert len(sensors) == 1
+    assert sensors[0].config_sync_state == "waiting_for_sensor"
+    assert sensors[0].latest_measurement is None
