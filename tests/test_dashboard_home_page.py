@@ -96,6 +96,12 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert dashboard_script_response.status_code == 200
     assert "BatteryStatus" in dashboard_script_response.text
     assert "const measurementColors = window.MeasurementColors;" in dashboard_script_response.text
+    assert 'const CONTACT_STATE_BADGES = {' in dashboard_script_response.text
+    assert 'active: { label: "Aktiv", className: "text-bg-success" }' in dashboard_script_response.text
+    assert 'delayed: { label: "Forseinka", className: "text-bg-warning" }' in dashboard_script_response.text
+    assert 'unknown: { label: "Ukjend", className: "text-bg-secondary" }' in dashboard_script_response.text
+    assert 'badgeGroup.appendChild(createStatusBadge(sensor.config_sync_state));' in dashboard_script_response.text
+    assert 'badgeGroup.appendChild(createContactStateBadge(sensor.contact_state));' in dashboard_script_response.text
     assert "dataset.batteryStatus" in dashboard_script_response.text
     assert "batteryStatus.getLabel(sensor.battery_percent)" in dashboard_script_response.text
     assert 'appendMetaRow(metaList, "Batteri", createBatteryStatusContent(sensor));' in dashboard_script_response.text
@@ -110,6 +116,13 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert detail_script_response.status_code == 200
     assert "BatteryStatus" in detail_script_response.text
     assert "const measurementColors = window.MeasurementColors;" in detail_script_response.text
+    assert 'const CONTACT_STATE_BADGES = {' in detail_script_response.text
+    assert 'active: { label: "Aktiv", className: "text-bg-success" }' in detail_script_response.text
+    assert 'delayed: { label: "Forseinka", className: "text-bg-warning" }' in detail_script_response.text
+    assert 'unknown: { label: "Ukjend", className: "text-bg-secondary" }' in detail_script_response.text
+    assert 'sensorSyncBadge.appendChild(createStatusBadge(detail.configuration.config_sync_state));' in detail_script_response.text
+    assert 'sensorSyncBadge.appendChild(createContactStateBadge(detail.contact_state));' in detail_script_response.text
+    assert 'appendMetaRow(statusList, "Kontaktstatus", createContactStateBadge(detail.contact_state));' in detail_script_response.text
     assert "battery-progress" in detail_script_response.text
     assert "progress-bar" in detail_script_response.text
     assert "aria-valuenow" in detail_script_response.text
@@ -146,3 +159,13 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert ".battery-progress" in css_response.text
     assert ".history-period-group" in css_response.text
     assert ".history-range-panel" in css_response.text
+
+
+def test_dashboard_sensor_detail_page_shell_has_badge_container_for_contact_status(tmp_path: Path) -> None:
+    database_path = tmp_path / "environment.db"
+
+    with create_client(database_path) as client:
+        response = client.get("/sensors/sensor-a")
+
+    assert response.status_code == 200
+    assert 'id="sensor-sync-badge" class="d-flex flex-wrap gap-2"' in response.text

@@ -29,6 +29,12 @@ const STATUS_BADGES = {
     device_ahead: { label: "Sensor framfor server", className: "text-bg-secondary" },
 };
 
+const CONTACT_STATE_BADGES = {
+    active: { label: "Aktiv", className: "text-bg-success" },
+    delayed: { label: "Forseinka", className: "text-bg-warning" },
+    unknown: { label: "Ukjend", className: "text-bg-secondary" },
+};
+
 const CHARTS = {
     temperature: {
         containerId: "temperature-chart",
@@ -157,6 +163,18 @@ function formatBatteryVoltage(voltage) {
 function createStatusBadge(state) {
     const config = STATUS_BADGES[state] ?? {
         label: "Ukjend status",
+        className: "text-bg-secondary",
+    };
+
+    const badge = document.createElement("span");
+    badge.className = `badge ${config.className} sensor-status-badge`;
+    badge.textContent = config.label;
+    return badge;
+}
+
+function createContactStateBadge(state) {
+    const config = CONTACT_STATE_BADGES[state] ?? {
+        label: "Ukjend",
         className: "text-bg-secondary",
     };
 
@@ -339,6 +357,7 @@ function renderCurrentValues(latestMeasurement) {
 function renderStatusSection(detail) {
     clearElement(statusList);
 
+    appendMetaRow(statusList, "Kontaktstatus", createContactStateBadge(detail.contact_state));
     appendMetaRow(statusList, "Sist sett", formatLastSeen(detail.last_seen_at));
     appendMetaRow(statusList, "Signal", formatInteger(detail.rssi_dbm, "dBm"));
     appendMetaRow(statusList, "Firmware", detail.firmware_version || "Ukjend");
@@ -368,6 +387,7 @@ function renderSensorDetail(detail) {
 
     clearElement(sensorSyncBadge);
     sensorSyncBadge.appendChild(createStatusBadge(detail.configuration.config_sync_state));
+    sensorSyncBadge.appendChild(createContactStateBadge(detail.contact_state));
 
     renderCurrentValues(detail.latest_measurement);
     renderStatusSection(detail);

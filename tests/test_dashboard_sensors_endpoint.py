@@ -13,6 +13,17 @@ def create_client(database_path: Path) -> TestClient:
     return TestClient(app)
 
 
+def create_client_with_server_time(
+    database_path: Path,
+    monkeypatch,
+    *,
+    server_time: int,
+) -> TestClient:
+    monkeypatch.setattr("app.database.time.time", lambda: server_time)
+    app = create_app(database_path)
+    return TestClient(app)
+
+
 def insert_device(
     database_path: Path,
     *,
@@ -108,10 +119,12 @@ def test_dashboard_sensors_empty_database_returns_empty_array(tmp_path: Path) ->
 
 def test_dashboard_sensors_returns_sensor_fields_with_synced_state(
     tmp_path: Path,
+    monkeypatch,
 ) -> None:
     database_path = tmp_path / "environment.db"
+    server_time = 1_786_484_296 + (6 * 3600)
 
-    with create_client(database_path) as client:
+    with create_client_with_server_time(database_path, monkeypatch, server_time=server_time) as client:
         insert_device(
             database_path,
             device_id="sensor-d8cbb0",
@@ -146,6 +159,7 @@ def test_dashboard_sensors_returns_sensor_fields_with_synced_state(
                 "device_name": "Utesensor nord",
                 "firmware_version": "0.1.0-dev",
                 "last_seen_at": 1_786_484_296,
+                "contact_state": "active",
                 "rssi_dbm": -77,
                 "battery_voltage": None,
                 "battery_percent": None,
@@ -251,6 +265,49 @@ def test_dashboard_sensors_returns_waiting_for_sensor_state(tmp_path: Path) -> N
     assert sensor["config_sync_state"] == "waiting_for_sensor"
     assert sensor["battery_voltage"] == 3.87
     assert sensor["battery_percent"] == 68
+
+
+def test_dashboard_sensors_returns_contact_state_for_unknown_last_seen(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_path = tmp_path / "environment.db"
+
+    with create_client_with_server_time(database_path, monkeypatch, server_time=2_000_000_000) as client:
+        insert_device(
+            database_path,
+            device_id="sensor-a",
+            device_name="Alpha",
+            last_seen_at=None,
+        )
+
+        response = client.get("/api/dashboard/sensors")
+
+    assert response.status_code == 200
+    assert response.json()["sensors"][0]["contact_state"] == "unknown"
+
+
+def test_dashboard_sensors_returns_contact_state_delayed_one_second_beyond_threshold(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_path = tmp_path / "environment.db"
+    server_time = 2_000_000_000
+    threshold_seconds = 6 * 3600
+
+    with create_client_with_server_time(database_path, monkeypatch, server_time=server_time) as client:
+        insert_device(
+            database_path,
+            device_id="sensor-a",
+            device_name="Alpha",
+            measurement_interval_seconds=3600,
+            last_seen_at=server_time - threshold_seconds - 1,
+        )
+
+        response = client.get("/api/dashboard/sensors")
+
+    assert response.status_code == 200
+    assert response.json()["sensors"][0]["contact_state"] == "delayed"
 
 
 def test_dashboard_sensors_returns_deterministic_name_and_device_id_order(

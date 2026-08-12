@@ -9,6 +9,12 @@ const STATUS_BADGES = {
     device_ahead: { label: "Sensor framfor server", className: "text-bg-secondary" },
 };
 
+const CONTACT_STATE_BADGES = {
+    active: { label: "Aktiv", className: "text-bg-success" },
+    delayed: { label: "Forseinka", className: "text-bg-warning" },
+    unknown: { label: "Ukjend", className: "text-bg-secondary" },
+};
+
 function formatNumber(value, unit) {
     if (value === null || value === undefined) {
         return { text: "Ukjend" };
@@ -197,6 +203,18 @@ function createStatusBadge(state) {
     return badge;
 }
 
+function createContactStateBadge(state) {
+    const config = CONTACT_STATE_BADGES[state] ?? {
+        label: "Ukjend",
+        className: "text-bg-secondary",
+    };
+
+    const badge = document.createElement("span");
+    badge.className = `badge ${config.className}`;
+    badge.textContent = config.label;
+    return badge;
+}
+
 function createSensorCard(sensor) {
     const column = document.createElement("div");
     column.className = "col";
@@ -219,7 +237,11 @@ function createSensorCard(sensor) {
 
     header.appendChild(title);
     header.appendChild(deviceId);
-    header.appendChild(createStatusBadge(sensor.config_sync_state));
+    const badgeGroup = document.createElement("div");
+    badgeGroup.className = "d-flex flex-wrap gap-2";
+    badgeGroup.appendChild(createStatusBadge(sensor.config_sync_state));
+    badgeGroup.appendChild(createContactStateBadge(sensor.contact_state));
+    header.appendChild(badgeGroup);
 
     body.appendChild(header);
 

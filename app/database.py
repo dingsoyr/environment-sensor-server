@@ -4,10 +4,12 @@ from dataclasses import dataclass
 import os
 import sqlite3
 from pathlib import Path
+import time
 
 
 DEFAULT_DATABASE_PATH = Path("data/environment.db")
 DATABASE_PATH_ENV_VAR = "ENVIRONMENT_SENSOR_DATABASE_PATH"
+CONTACT_DELAY_MINIMUM_SECONDS = 6 * 60 * 60
 UNSET = object()
 
 
@@ -34,6 +36,7 @@ class DashboardSensorRecord:
     device_name: str | None
     firmware_version: str | None
     last_seen_at: int | None
+    contact_state: str
     rssi_dbm: int | None
     battery_voltage: float | None
     battery_percent: int | None
@@ -80,6 +83,10 @@ class DashboardSensorConfigurationStateRecord:
 
 
 def _build_dashboard_sensor_record(row: sqlite3.Row | tuple) -> DashboardSensorRecord:
+    contact_state = _derive_contact_state(
+        last_seen_at=row[3],
+        measurement_interval_seconds=row[7],
+    )
     latest_measurement = None
     if row[10] is not None:
         latest_measurement = LatestMeasurementRecord(
@@ -96,6 +103,7 @@ def _build_dashboard_sensor_record(row: sqlite3.Row | tuple) -> DashboardSensorR
         device_name=row[1],
         firmware_version=row[2],
         last_seen_at=row[3],
+        contact_state=contact_state,
         rssi_dbm=row[4],
         battery_voltage=row[5],
         battery_percent=row[6],
@@ -253,6 +261,26 @@ def _derive_config_sync_state(
         return "waiting_for_sensor"
 
     return "device_ahead"
+
+
+def _derive_contact_state(
+    *,
+    last_seen_at: int | None,
+    measurement_interval_seconds: int,
+    now: int | None = None,
+) -> str:
+    if last_seen_at is None:
+        return "unknown"
+
+    current_time = int(time.time()) if now is None else now
+    threshold_seconds = max(
+        6 * measurement_interval_seconds,
+        CONTACT_DELAY_MINIMUM_SECONDS,
+    )
+    if current_time - last_seen_at > threshold_seconds:
+        return "delayed"
+
+    return "active"
 
 
 def list_dashboard_sensors(

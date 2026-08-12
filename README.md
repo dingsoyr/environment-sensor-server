@@ -358,6 +358,7 @@ The current dashboard surface includes:
 - history views for `24h`, `7d`, and `30d`;
 - dashboard configuration editing for sensor name and measurement interval;
 - configuration sync states of `synced`, `waiting_for_sensor`, and `device_ahead`.
+- derived contact health from `last_seen_at` and configured measurement interval, kept separate from configuration synchronization.
 
 The HTML page routes serve thin shells. Current dashboard state is loaded through dashboard JSON APIs.
 

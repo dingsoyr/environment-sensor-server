@@ -5,6 +5,9 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, StrictStr, field_validator, model_validator
 
 
+DashboardContactState = Literal["active", "delayed", "unknown"]
+
+
 class DashboardLatestMeasurement(BaseModel):
     sequence: int
     measured_at: int
@@ -26,6 +29,7 @@ class DashboardSensor(BaseModel):
     device_name: str | None
     firmware_version: str | None
     last_seen_at: int | None
+    contact_state: DashboardContactState
     rssi_dbm: int | None
     battery_voltage: float | None
     battery_percent: int | None
@@ -45,6 +49,7 @@ class DashboardSensorDetail(BaseModel):
     device_name: str | None
     firmware_version: str | None
     last_seen_at: int | None
+    contact_state: DashboardContactState
     rssi_dbm: int | None
     battery_voltage: float | None
     battery_percent: int | None

@@ -13,6 +13,17 @@ def create_client(database_path: Path) -> TestClient:
     return TestClient(app)
 
 
+def create_client_with_server_time(
+    database_path: Path,
+    monkeypatch,
+    *,
+    server_time: int,
+) -> TestClient:
+    monkeypatch.setattr("app.database.time.time", lambda: server_time)
+    app = create_app(database_path)
+    return TestClient(app)
+
+
 def insert_device(
     database_path: Path,
     *,
@@ -96,10 +107,11 @@ def insert_measurement(
         )
 
 
-def test_dashboard_sensor_detail_returns_expected_fields(tmp_path: Path) -> None:
+def test_dashboard_sensor_detail_returns_expected_fields(tmp_path: Path, monkeypatch) -> None:
     database_path = tmp_path / "environment.db"
+    server_time = 1_786_484_296 + (6 * 3600)
 
-    with create_client(database_path) as client:
+    with create_client_with_server_time(database_path, monkeypatch, server_time=server_time) as client:
         insert_device(
             database_path,
             device_id="sensor-d8cbb0",
@@ -132,6 +144,7 @@ def test_dashboard_sensor_detail_returns_expected_fields(tmp_path: Path) -> None
         "device_name": "Utesensor nord",
         "firmware_version": "0.1.0-dev",
         "last_seen_at": 1_786_484_296,
+        "contact_state": "active",
         "rssi_dbm": -83,
         "battery_voltage": None,
         "battery_percent": None,
@@ -270,3 +283,23 @@ def test_dashboard_sensor_detail_returns_device_ahead_state(tmp_path: Path) -> N
         "reported_config_version": 4,
         "config_sync_state": "device_ahead",
     }
+
+
+def test_dashboard_sensor_detail_returns_contact_state_unknown_when_last_seen_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_path = tmp_path / "environment.db"
+
+    with create_client_with_server_time(database_path, monkeypatch, server_time=2_000_000_000) as client:
+        insert_device(
+            database_path,
+            device_id="sensor-a",
+            device_name="Alpha",
+            last_seen_at=None,
+        )
+
+        response = client.get("/api/dashboard/sensors/sensor-a")
+
+    assert response.status_code == 200
+    assert response.json()["contact_state"] == "unknown"

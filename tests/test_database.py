@@ -3,6 +3,8 @@ from dataclasses import asdict
 from pathlib import Path
 
 from app.database import (
+    CONTACT_DELAY_MINIMUM_SECONDS,
+    _derive_contact_state,
     connect_database,
     initialize_database,
     list_dashboard_sensor_history_by_day,
@@ -11,6 +13,83 @@ from app.database import (
 
 
 UTC_DAY_SECONDS = 24 * 60 * 60
+
+
+def test_derive_contact_state_returns_unknown_without_last_seen() -> None:
+    assert _derive_contact_state(
+        last_seen_at=None,
+        measurement_interval_seconds=3600,
+        now=2_000_000_000,
+    ) == "unknown"
+
+
+def test_derive_contact_state_returns_active_for_recent_last_seen() -> None:
+    now = 2_000_000_000
+
+    assert _derive_contact_state(
+        last_seen_at=now - 60,
+        measurement_interval_seconds=3600,
+        now=now,
+    ) == "active"
+
+
+def test_derive_contact_state_keeps_exact_threshold_boundary_active() -> None:
+    now = 2_000_000_000
+    threshold_seconds = 6 * 3600
+
+    assert _derive_contact_state(
+        last_seen_at=now - threshold_seconds,
+        measurement_interval_seconds=3600,
+        now=now,
+    ) == "active"
+
+
+def test_derive_contact_state_returns_delayed_one_second_beyond_threshold() -> None:
+    now = 2_000_000_000
+    threshold_seconds = 6 * 3600
+
+    assert _derive_contact_state(
+        last_seen_at=now - threshold_seconds - 1,
+        measurement_interval_seconds=3600,
+        now=now,
+    ) == "delayed"
+
+
+def test_derive_contact_state_uses_six_hour_threshold_for_one_hour_interval() -> None:
+    now = 2_000_000_000
+
+    assert _derive_contact_state(
+        last_seen_at=now - CONTACT_DELAY_MINIMUM_SECONDS,
+        measurement_interval_seconds=3600,
+        now=now,
+    ) == "active"
+
+
+def test_derive_contact_state_short_interval_still_uses_six_hour_minimum() -> None:
+    now = 2_000_000_000
+
+    assert _derive_contact_state(
+        last_seen_at=now - CONTACT_DELAY_MINIMUM_SECONDS,
+        measurement_interval_seconds=300,
+        now=now,
+    ) == "active"
+
+
+def test_derive_contact_state_long_interval_uses_six_times_interval_when_larger() -> None:
+    now = 2_000_000_000
+    measurement_interval_seconds = 5 * 60 * 60
+    threshold_seconds = 6 * measurement_interval_seconds
+
+    assert _derive_contact_state(
+        last_seen_at=now - threshold_seconds,
+        measurement_interval_seconds=measurement_interval_seconds,
+        now=now,
+    ) == "active"
+    assert _derive_contact_state(
+        last_seen_at=now - threshold_seconds - 1,
+        measurement_interval_seconds=measurement_interval_seconds,
+        now=now,
+    ) == "delayed"
 
 
 def insert_device(database_path: Path, device_id: str) -> None:
