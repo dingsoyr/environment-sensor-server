@@ -58,7 +58,7 @@ Example:
 | `api_version` | integer | yes | API contract version. Must be `1`. |
 | `device_id` | string | yes | Stable unique identifier for the device. |
 | `firmware_version` | string | yes | Firmware version running on the device. |
-| `config_version` | integer | yes | Configuration version currently stored by the device. |
+| `config_version` | integer | yes | Configuration version currently reported by the device as its applied local configuration version. |
 | `status` | object | yes | Current device status at transmission time. |
 | `measurements` | array | yes | Buffered measurements to upload. |
 
@@ -101,7 +101,7 @@ Battery fields are optional so devices without battery measurement support can u
 | `api_version` | integer | API contract version. |
 | `acknowledged_through` | integer | Highest contiguous sequence number acknowledged by the server. |
 | `server_time` | integer | Current server Unix time in UTC. |
-| `config_version` | integer | Current configuration version on the server. |
+| `config_version` | integer | Current server-owned desired configuration version for the device. |
 | `configuration` | object | Optional configuration, present when the server has a newer configuration for the device. |
 
 ## Configuration update
@@ -158,7 +158,13 @@ A measurement where `timestamp_valid` is `false` must not be assumed to have an 
 
 The device sends its current `config_version` with every upload.
 
+In requests, `config_version` means the configuration version the device currently reports as applied locally.
+
 If the server configuration version is newer, the server may include the new configuration in the response.
+
+In responses, `config_version` means the server-owned current desired configuration version for that device.
+
+These values may differ while the device is waiting to receive and apply a newer server configuration.
 
 The `configuration` object is only included when a complete server-managed
 configuration is available. If the server has a newer `config_version` but

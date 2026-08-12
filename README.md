@@ -1,6 +1,6 @@
 # Environment Sensor Server
 
-Server application for receiving, storing and displaying measurements from the environment sensor devices.
+Server application for receiving, storing and displaying measurements from environment sensor devices.
 
 The application is intended to run on a Raspberry Pi and uses:
 
@@ -10,6 +10,16 @@ The application is intended to run on a Raspberry Pi and uses:
 - SQLite
 
 The sensor/server API contract is documented in [`docs/api-v1.md`](docs/api-v1.md).
+
+The current repository includes:
+
+- a FastAPI ingestion API for ESP32 measurement uploads;
+- SQLite persistence and schema initialization for local runtime data;
+- dashboard JSON APIs for sensor overview, detail, history, and configuration updates;
+- server-rendered dashboard pages using Jinja2 templates;
+- Bootstrap 5, Bootstrap Icons, vanilla JavaScript, and Highcharts loaded from CDNs;
+- development-only demo data SQL scripts for local dashboard work;
+- a pytest suite covering API, database, dashboard, and demo tooling behavior.
 
 ## Current status
 
@@ -22,7 +32,7 @@ Initial goals:
 - handle duplicate uploads safely;
 - acknowledge persisted measurements;
 - return server time and device configuration;
-- later provide a responsive web interface for historical sensor data and device configuration.
+- provide a responsive web interface for historical sensor data and device configuration.
 
 ## Development environment
 
@@ -225,10 +235,24 @@ Do not treat that example IP as a permanent production address.
 ## Run tests
 
 ```bash
-pytest
+.venv/bin/python -m pytest
 ```
 
-Tests should use isolated temporary databases and must not depend on the runtime SQLite database.
+The pytest suite currently covers:
+
+- database helpers and schema behavior;
+- measurement ingestion behavior;
+- API v1 endpoint behavior;
+- dashboard JSON endpoints;
+- dashboard HTML shells and static asset wiring;
+- dashboard configuration sync behavior;
+- demo SQL scripts.
+
+Tests use isolated temporary databases and must not depend on the runtime SQLite database.
+
+Physical ESP32 or other hardware integration testing is outside pytest.
+
+The current suite may emit an existing upstream FastAPI/Starlette TestClient deprecation warning related to `httpx`. Treat that as a warning, not a project test failure.
 
 ## API contract
 
@@ -256,9 +280,45 @@ Repeated uploads must not create duplicate measurements.
 
 SQLite is used for persistent storage.
 
+By default, the runtime database path is `data/environment.db`.
+
+The `data/` directory is created automatically if it does not already exist.
+
+At application startup, the server initializes the database schema for the configured database path.
+
+You can override the default path with the `ENVIRONMENT_SENSOR_DATABASE_PATH` environment variable.
+
+New databases receive the current schema objects defined by the application, including required tables and indexes.
+
+Existing databases are not automatically migrated when the schema changes. The current `initialize_database()` behavior creates missing schema objects for new databases, but it is not a general migration engine.
+
+During development, schema changes may require manual SQL changes or recreating the local database. No migration framework currently exists.
+
 Runtime database files are intentionally excluded from Git.
 
 The server source code must be able to create the required database schema on a new installation.
+
+## Dashboard
+
+The current dashboard surface includes:
+
+- `/` for the dashboard home page;
+- `/sensors/{device_id}` for a sensor detail page;
+- history views for `24h`, `7d`, and `30d`;
+- dashboard configuration editing for sensor name and measurement interval;
+- configuration sync states of `synced`, `waiting_for_sensor`, and `device_ahead`.
+
+The HTML page routes serve thin shells. Current dashboard state is loaded through dashboard JSON APIs.
+
+## Frontend stack
+
+The dashboard uses:
+
+- Jinja2 templates;
+- Bootstrap 5 from CDN;
+- Bootstrap Icons from CDN;
+- vanilla JavaScript;
+- Highcharts from CDN.
 
 ## Demo dashboard data
 
@@ -266,7 +326,16 @@ Development-only SQL scripts are available for populating a local database with 
 
 Do not run these scripts against a production database.
 
+The `sqlite3` CLI is required to run the scripts manually.
+
+The application schema must already exist before running them. On a fresh clone, starting the server once is a simple way to initialize the local database.
+
 The scripts only target the dedicated demo device `sensor-demo-001` with device name `Demo sensor`.
+
+Script paths:
+
+- `scripts/create_demo_data.sql`
+- `scripts/delete_demo_data.sql`
 
 Create demo data in the local development database:
 
@@ -293,23 +362,27 @@ The create script regenerates about 60 days of hourly history for the demo devic
 
 ## Project structure
 
-Current and planned structure:
+Current structure:
 
 ```text
 environment-sensor-server/
 ├── app/
-│   ├── __init__.py
-│   └── main.py
+│   ├── main.py                    # FastAPI app, routes, lifespan wiring
+│   ├── database.py                # SQLite schema, queries, dashboard config persistence
+│   ├── measurement_ingestion.py   # Measurement ingestion transaction behavior
+│   ├── api_v1_models.py           # ESP32 API request/response models
+│   ├── dashboard_models.py        # Dashboard API models
+│   ├── templates/                 # Server-rendered HTML templates
+│   └── static/                    # Dashboard CSS and JavaScript
 ├── docs/
-│   └── api-v1.md
-├── tests/
+│   └── api-v1.md                  # API v1 contract
+├── scripts/                       # Development/demo SQL helpers
+├── tests/                         # Pytest suite
 ├── .gitignore
 ├── AGENTS.md
 ├── README.md
 └── requirements.txt
 ```
-
-The structure will grow incrementally as database and API functionality is added.
 
 ## Raspberry Pi deployment
 

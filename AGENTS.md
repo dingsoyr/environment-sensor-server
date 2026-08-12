@@ -4,7 +4,7 @@
 
 This repository contains the server application for the environment sensor system.
 
-The server receives measurements from sensor devices over HTTP, stores them persistently, returns acknowledgements and configuration, and will later provide a simple web interface for viewing historical sensor data and managing devices.
+The server receives measurements from sensor devices over HTTP, stores them persistently, returns acknowledgements and configuration, and serves a simple web interface for viewing historical sensor data and managing device configuration.
 
 The server is intended to run on a Raspberry Pi.
 
@@ -33,6 +33,35 @@ The initial endpoint is:
 
 `POST /api/v1/measurements`
 
+Current dashboard JSON endpoints and HTML shells also exist, but `docs/api-v1.md` remains the source of truth for the ESP32 wire contract.
+
+## Module ownership
+
+Keep ownership boundaries clear:
+
+- `app/main.py`
+  - FastAPI application wiring
+  - thin route handlers
+  - startup/lifespan integration
+  - HTML shell routes
+- `app/database.py`
+  - SQLite connection helpers
+  - schema initialization
+  - query helpers
+  - dashboard configuration persistence
+- `app/measurement_ingestion.py`
+  - measurement ingestion transaction behavior
+  - device status updates
+  - device-reported version updates
+- `app/api_v1_models.py`
+  - ESP32 API v1 request and response models
+- `app/dashboard_models.py`
+  - dashboard API models
+- `app/templates/` and `app/static/`
+  - frontend presentation and client behavior
+- `docs/api-v1.md`
+  - ESP32 API wire-contract documentation
+
 ## Measurement identity and idempotency
 
 A measurement is uniquely identified by:
@@ -43,7 +72,31 @@ Repeated uploads of the same measurement must not create duplicate records.
 
 The database must enforce this invariant where practical.
 
+Duplicate uploads are idempotent.
+
+Existing persisted measurement rows must not be overwritten by later duplicate `(device_id, sequence)` uploads.
+
+Acknowledgement behavior must remain consistent with contiguous persisted sequences.
+
 Acknowledgements must only be returned for measurements that the server has safely persisted.
+
+Do not return a successful acknowledgement for failed persistence.
+
+## Configuration ownership and sync semantics
+
+Protect the current configuration ownership rules:
+
+- `config_version` is the server-owned desired configuration state.
+- `reported_config_version` is the latest configuration version reported by the device.
+- Measurement ingestion must not overwrite an existing server-owned `config_version`.
+- Dashboard configuration updates must not modify `reported_config_version`.
+- Effective dashboard configuration changes increment `config_version`.
+- No-op dashboard configuration updates do not increment `config_version`.
+
+New-device behavior is also important:
+
+- New devices default `device_name` to `device_id`.
+- The first upload initializes both server `config_version` and `reported_config_version` from the device-reported request version.
 
 ## Data model
 
@@ -54,7 +107,8 @@ The initial conceptual model is:
 - `devices`
   - device identity
   - human-readable name
-  - configuration
+  - server-owned desired configuration
+  - device-reported configuration version
   - firmware version
   - last seen
   - current status such as RSSI and battery information
@@ -82,7 +136,13 @@ Database schema creation must be reproducible from source code.
 
 Schema changes should be handled deliberately. Do not silently destroy existing data.
 
-During early development, simple schema initialization is acceptable. Introduce a migration framework only when there is a real need.
+The current project does not use an automatic migration framework.
+
+`initialize_database()` creates the current schema objects for new databases, but it is not a general migration engine for existing databases.
+
+Do not silently add automatic schema migrations as part of unrelated work.
+
+Existing development databases may be updated manually when explicitly requested.
 
 ## Code structure
 
@@ -91,6 +151,12 @@ Keep modules small and focused.
 Prefer clear functions and simple data structures over unnecessary classes or abstractions.
 
 Keep FastAPI request handling, database access, and domain logic separated when doing so improves testability and clarity.
+
+HTML page routes should remain thin shells.
+
+Dashboard frontend behavior should load current state through the dashboard APIs.
+
+Avoid coupling presentation directly to ad-hoc database queries when existing helpers or APIs already own the behavior.
 
 Do not create layers merely for architectural purity.
 
@@ -136,9 +202,7 @@ The initial server runs on a trusted local network. Do not add authentication or
 
 ## Frontend
 
-A simple responsive web interface will be added later.
-
-The initial direction is:
+The current web interface uses:
 
 - server-rendered HTML
 - responsive/mobile-first CSS
