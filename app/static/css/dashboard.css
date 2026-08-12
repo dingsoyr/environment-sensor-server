@@ -9,12 +9,15 @@
 }
 
 .measurement-summary {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.75rem;
+    align-items: stretch;
 }
 
 .measurement-tile {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 0.35rem;
+    width: 100%;
     padding: 0.75rem;
     border: 1px solid var(--bs-border-color);
     border-radius: var(--bs-border-radius);
@@ -28,9 +31,26 @@
 }
 
 .measurement-value {
-    display: block;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.25rem;
+    white-space: nowrap;
+    line-height: 1.1;
     font-size: 1.25rem;
     font-weight: 600;
+}
+
+.measurement-value-number {
+    display: inline-block;
+}
+
+.measurement-value-unit {
+    display: inline-block;
+    font-size: 0.8em;
+}
+
+.measurement-summary > .col {
+    min-width: 0;
 }
 
 .sensor-meta {
@@ -110,7 +130,31 @@
 
 @media (max-width: 575.98px) {
     .measurement-summary {
-        grid-template-columns: 1fr;
+        border: 1px solid var(--bs-border-color);
+        border-radius: var(--bs-border-radius);
+        background-color: var(--bs-tertiary-bg);
+        overflow: hidden;
+    }
+
+    .measurement-tile {
+        gap: 0.25rem;
+        padding: 0.625rem;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+    }
+
+    .measurement-summary > .col + .col .measurement-tile {
+        border-left: 1px solid var(--bs-border-color);
+    }
+
+    .measurement-label {
+        font-size: 0.75rem;
+    }
+
+    .measurement-value {
+        gap: 0.2rem;
+        font-size: clamp(0.95rem, 3vw, 1.1rem);
     }
 
     .chart-surface {

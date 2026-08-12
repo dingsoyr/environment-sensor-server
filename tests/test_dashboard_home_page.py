@@ -76,6 +76,8 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert "dataset.batteryStatus" in dashboard_script_response.text
     assert "batteryStatus.getLabel(sensor.battery_percent)" in dashboard_script_response.text
     assert 'appendMetaRow(metaList, "Batteri", createBatteryStatusContent(sensor));' in dashboard_script_response.text
+    assert 'measurementSummary.className = "measurement-summary row row-cols-3 g-0 g-sm-2";' in dashboard_script_response.text
+    assert 'unitElement.className = "measurement-value-unit";' in dashboard_script_response.text
     assert "hasBatteryPercent(sensor) || hasBatteryVoltage(sensor)" not in dashboard_script_response.text
 
     assert detail_script_response.status_code == 200
@@ -87,5 +89,8 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert "batteryStatus.getLabel(detail.battery_percent)" in detail_script_response.text
 
     assert css_response.status_code == 200
+    assert ".measurement-value-unit" in css_response.text
+    assert ".measurement-summary > .col + .col .measurement-tile" in css_response.text
+    assert "white-space: nowrap;" in css_response.text
     assert ".battery-status-row" in css_response.text
     assert ".battery-progress" in css_response.text

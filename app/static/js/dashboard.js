@@ -10,10 +10,13 @@ const STATUS_BADGES = {
 
 function formatNumber(value, unit) {
     if (value === null || value === undefined) {
-        return "Ukjend";
+        return { text: "Ukjend" };
     }
 
-    return `${value.toFixed(1)} ${unit}`;
+    return {
+        number: value.toFixed(1),
+        unit,
+    };
 }
 
 function formatInteger(value, unit) {
@@ -76,8 +79,11 @@ function renderEmptyState() {
 }
 
 function createMeasurementTile(label, value) {
+    const column = document.createElement("div");
+    column.className = "col d-flex";
+
     const tile = document.createElement("div");
-    tile.className = "measurement-tile";
+    tile.className = "measurement-tile h-100";
 
     const labelElement = document.createElement("span");
     labelElement.className = "measurement-label";
@@ -85,11 +91,26 @@ function createMeasurementTile(label, value) {
 
     const valueElement = document.createElement("span");
     valueElement.className = "measurement-value";
-    valueElement.textContent = value;
+
+    if (value.text) {
+        valueElement.textContent = value.text;
+    } else {
+        const numberElement = document.createElement("span");
+        numberElement.className = "measurement-value-number";
+        numberElement.textContent = value.number;
+
+        const unitElement = document.createElement("span");
+        unitElement.className = "measurement-value-unit";
+        unitElement.textContent = value.unit;
+
+        valueElement.appendChild(numberElement);
+        valueElement.appendChild(unitElement);
+    }
 
     tile.appendChild(labelElement);
     tile.appendChild(valueElement);
-    return tile;
+    column.appendChild(tile);
+    return column;
 }
 
 function appendMetaRow(list, label, value) {
@@ -207,7 +228,7 @@ function createSensorCard(sensor) {
         body.appendChild(noMeasurement);
     } else {
         const measurementSummary = document.createElement("div");
-        measurementSummary.className = "measurement-summary";
+        measurementSummary.className = "measurement-summary row row-cols-3 g-0 g-sm-2";
         measurementSummary.appendChild(
             createMeasurementTile(
                 "Temperatur",
