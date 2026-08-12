@@ -48,6 +48,7 @@ def initialize_database(database_path: str | Path | None = None) -> Path:
                 device_name TEXT,
                 firmware_version TEXT,
                 config_version INTEGER NOT NULL DEFAULT 0,
+                reported_config_version INTEGER NOT NULL DEFAULT 0 CHECK (reported_config_version >= 0),
                 measurement_interval_seconds INTEGER NOT NULL DEFAULT 3600,
                 last_seen_at INTEGER,
                 rssi_dbm INTEGER,

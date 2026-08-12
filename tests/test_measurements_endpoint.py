@@ -78,8 +78,11 @@ def test_response_uses_server_stored_config_version(tmp_path: Path, monkeypatch)
     with create_client(database_path, monkeypatch) as client:
         with connect_database(database_path) as connection:
             connection.execute(
-                "INSERT INTO devices (device_id, config_version) VALUES (?, ?)",
-                ("sensor-d8cbb0", 5),
+                """
+                INSERT INTO devices (device_id, config_version, reported_config_version)
+                VALUES (?, ?, ?)
+                """,
+                ("sensor-d8cbb0", 5, 5),
             )
 
         response = client.post("/api/v1/measurements", json=make_request_payload())
@@ -102,11 +105,12 @@ def test_newer_server_config_with_device_name_returns_configuration(
                     device_id,
                     device_name,
                     config_version,
+                    reported_config_version,
                     measurement_interval_seconds
                 )
-                VALUES (?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                ("sensor-d8cbb0", "Outdoor sensor", 5, 1800),
+                ("sensor-d8cbb0", "Outdoor sensor", 5, 2, 1800),
             )
 
         response = client.post("/api/v1/measurements", json=make_request_payload())
@@ -122,6 +126,96 @@ def test_newer_server_config_with_device_name_returns_configuration(
             "measurement_interval_seconds": 1800,
         },
     }
+
+
+def test_stale_device_report_keeps_server_config_and_updates_reported_version(
+    tmp_path: Path, monkeypatch
+) -> None:
+    database_path = tmp_path / "environment.db"
+
+    with create_client(database_path, monkeypatch) as client:
+        with connect_database(database_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO devices (
+                    device_id,
+                    device_name,
+                    config_version,
+                    reported_config_version,
+                    measurement_interval_seconds
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                ("sensor-d8cbb0", "Outdoor sensor", 4, 3, 1800),
+            )
+
+        payload = make_request_payload()
+        payload["config_version"] = 3
+
+        response = client.post("/api/v1/measurements", json=payload)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "api_version": 1,
+        "acknowledged_through": 722,
+        "server_time": 1_786_303_653,
+        "config_version": 4,
+        "configuration": {
+            "device_name": "Outdoor sensor",
+            "measurement_interval_seconds": 1800,
+        },
+    }
+
+    with connect_database(database_path) as connection:
+        config_versions = connection.execute(
+            "SELECT config_version, reported_config_version FROM devices WHERE device_id = ?",
+            ("sensor-d8cbb0",),
+        ).fetchone()
+
+    assert config_versions == (4, 3)
+
+
+def test_reported_config_version_updates_after_device_reports_newer_config(
+    tmp_path: Path, monkeypatch
+) -> None:
+    database_path = tmp_path / "environment.db"
+
+    with create_client(database_path, monkeypatch) as client:
+        with connect_database(database_path) as connection:
+            connection.execute(
+                """
+                INSERT INTO devices (
+                    device_id,
+                    device_name,
+                    config_version,
+                    reported_config_version,
+                    measurement_interval_seconds
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                ("sensor-d8cbb0", "Outdoor sensor", 4, 3, 1800),
+            )
+
+        payload = make_request_payload()
+        payload["config_version"] = 4
+
+        response = client.post("/api/v1/measurements", json=payload)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "api_version": 1,
+        "acknowledged_through": 722,
+        "server_time": 1_786_303_653,
+        "config_version": 4,
+    }
+
+    with connect_database(database_path) as connection:
+        config_versions = connection.execute(
+            "SELECT config_version, reported_config_version FROM devices WHERE device_id = ?",
+            ("sensor-d8cbb0",),
+        ).fetchone()
+
+    assert config_versions == (4, 4)
 
 
 def test_repeated_identical_post_is_idempotent(tmp_path: Path, monkeypatch) -> None:

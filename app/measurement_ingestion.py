@@ -31,14 +31,16 @@ def ingest_measurement_upload(
                 device_id,
                 firmware_version,
                 config_version,
+                reported_config_version,
                 last_seen_at,
                 rssi_dbm,
                 battery_voltage,
                 battery_percent
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(device_id) DO UPDATE SET
                 firmware_version = excluded.firmware_version,
+                reported_config_version = excluded.reported_config_version,
                 last_seen_at = excluded.last_seen_at,
                 rssi_dbm = excluded.rssi_dbm,
                 battery_voltage = excluded.battery_voltage,
@@ -47,6 +49,7 @@ def ingest_measurement_upload(
             (
                 request.device_id,
                 request.firmware_version,
+                request.config_version,
                 request.config_version,
                 server_time,
                 request.status.rssi_dbm,

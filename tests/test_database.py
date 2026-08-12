@@ -43,9 +43,16 @@ def test_initialize_database_creates_schema(tmp_path: Path) -> None:
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             )
         }
+        device_columns = {
+            row[1]: row[4]
+            for row in connection.execute("PRAGMA table_info(devices)")
+        }
 
     assert "devices" in table_names
     assert "measurements" in table_names
+    assert "config_version" in device_columns
+    assert "reported_config_version" in device_columns
+    assert device_columns["reported_config_version"] == "0"
 
 
 def test_initialize_database_is_idempotent(tmp_path: Path) -> None:
@@ -134,3 +141,22 @@ def test_measurement_requires_existing_device(tmp_path: Path) -> None:
             pass
         else:
             raise AssertionError("expected missing device insert to fail")
+
+
+def test_reported_config_version_must_not_be_negative(tmp_path: Path) -> None:
+    database_path = tmp_path / "environment.db"
+    initialize_database(database_path)
+
+    with connect_database(database_path) as connection:
+        try:
+            connection.execute(
+                """
+                INSERT INTO devices (device_id, reported_config_version)
+                VALUES (?, ?)
+                """,
+                ("sensor-a", -1),
+            )
+        except sqlite3.IntegrityError:
+            pass
+        else:
+            raise AssertionError("expected negative reported_config_version insert to fail")

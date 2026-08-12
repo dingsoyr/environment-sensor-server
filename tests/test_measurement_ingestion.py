@@ -74,6 +74,7 @@ def test_first_upload_creates_device_and_measurements(
                 device_name,
                 firmware_version,
                 config_version,
+                reported_config_version,
                 measurement_interval_seconds,
                 last_seen_at,
                 rssi_dbm,
@@ -93,6 +94,7 @@ def test_first_upload_creates_device_and_measurements(
         "sensor-a",
         None,
         "0.1.0",
+        2,
         2,
         3600,
         1_786_303_653,
@@ -134,14 +136,21 @@ def test_device_status_is_updated_on_later_upload(tmp_path: Path, monkeypatch) -
     with connect_database(database_path) as connection:
         device_row = connection.execute(
             """
-            SELECT firmware_version, config_version, last_seen_at, rssi_dbm, battery_voltage, battery_percent
+            SELECT
+                firmware_version,
+                config_version,
+                reported_config_version,
+                last_seen_at,
+                rssi_dbm,
+                battery_voltage,
+                battery_percent
             FROM devices
             WHERE device_id = ?
             """,
             ("sensor-a",),
         ).fetchone()
 
-    assert device_row == ("0.2.0", 2, 1_786_307_253, -58, 3.87, 68)
+    assert device_row == ("0.2.0", 2, 3, 1_786_307_253, -58, 3.87, 68)
 
 
 def test_existing_device_keeps_server_owned_config_version(
@@ -182,14 +191,76 @@ def test_existing_device_keeps_server_owned_config_version(
     )
 
     with connect_database(database_path) as connection:
-        config_version = connection.execute(
-            "SELECT config_version FROM devices WHERE device_id = ?",
+        config_versions = connection.execute(
+            "SELECT config_version, reported_config_version FROM devices WHERE device_id = ?",
             ("sensor-a",),
-        ).fetchone()[0]
+        ).fetchone()
 
     assert first_result.config_version == 2
-    assert config_version == 3
+    assert config_versions == (3, 2)
     assert second_result.config_version == 3
+
+
+def test_reported_config_version_catches_up_after_device_applies_new_config(
+    tmp_path: Path, monkeypatch
+) -> None:
+    database_path = tmp_path / "environment.db"
+    initialize_database(database_path)
+    monkeypatch.setattr("app.measurement_ingestion.time.time", lambda: 1_786_303_653)
+
+    ingest_measurement_upload(make_request(config_version=3), database_path)
+
+    with connect_database(database_path) as connection:
+        connection.execute(
+            "UPDATE devices SET config_version = ? WHERE device_id = ?",
+            (4, "sensor-a"),
+        )
+
+    monkeypatch.setattr("app.measurement_ingestion.time.time", lambda: 1_786_307_253)
+    stale_result = ingest_measurement_upload(
+        make_request(
+            config_version=3,
+            measurements=[
+                {
+                    "sequence": 723,
+                    "measured_at": 1_786_307_252,
+                    "timestamp_valid": True,
+                    "temperature_c": 18.71,
+                    "humidity_percent": 54.12,
+                    "pressure_hpa": 990.25,
+                }
+            ],
+        ),
+        database_path,
+    )
+
+    monkeypatch.setattr("app.measurement_ingestion.time.time", lambda: 1_786_310_853)
+    updated_result = ingest_measurement_upload(
+        make_request(
+            config_version=4,
+            measurements=[
+                {
+                    "sequence": 724,
+                    "measured_at": 1_786_310_852,
+                    "timestamp_valid": True,
+                    "temperature_c": 18.52,
+                    "humidity_percent": 54.33,
+                    "pressure_hpa": 990.11,
+                }
+            ],
+        ),
+        database_path,
+    )
+
+    with connect_database(database_path) as connection:
+        config_versions = connection.execute(
+            "SELECT config_version, reported_config_version FROM devices WHERE device_id = ?",
+            ("sensor-a",),
+        ).fetchone()
+
+    assert stale_result.config_version == 4
+    assert updated_result.config_version == 4
+    assert config_versions == (4, 4)
 
 
 def test_server_managed_device_fields_are_not_overwritten(tmp_path: Path, monkeypatch) -> None:
@@ -203,11 +274,12 @@ def test_server_managed_device_fields_are_not_overwritten(tmp_path: Path, monkey
                 device_name,
                 firmware_version,
                 config_version,
+                reported_config_version,
                 measurement_interval_seconds
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            ("sensor-a", "Outdoor sensor", "0.0.1", 1, 1800),
+            ("sensor-a", "Outdoor sensor", "0.0.1", 1, 1, 1800),
         )
     monkeypatch.setattr("app.measurement_ingestion.time.time", lambda: 1_786_303_653)
 
