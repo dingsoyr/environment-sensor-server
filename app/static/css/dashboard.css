@@ -50,8 +50,36 @@
     background: transparent;
 }
 
+.chart-surface {
+    min-height: 280px;
+}
+
+.current-value-card {
+    height: 100%;
+}
+
+.current-value-card .measurement-value {
+    font-size: 1.75rem;
+}
+
+.sensor-status-badge {
+    display: inline-flex;
+    align-items: center;
+}
+
+.status-value {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
 @media (max-width: 575.98px) {
     .measurement-summary {
         grid-template-columns: 1fr;
+    }
+
+    .chart-surface {
+        min-height: 240px;
     }
 }

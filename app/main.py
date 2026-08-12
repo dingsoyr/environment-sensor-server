@@ -83,10 +83,10 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         )
 
     @app.get("/sensors/{device_id}", response_class=HTMLResponse)
-    def dashboard_sensor_placeholder(device_id: str, request: Request) -> HTMLResponse:
+    def dashboard_sensor_detail_page(device_id: str, request: Request) -> HTMLResponse:
         return templates.TemplateResponse(
             request,
-            "sensor_placeholder.html",
+            "sensor_detail.html",
             {
                 "page_title": "Sensor",
                 "device_id": device_id,
