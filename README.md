@@ -260,6 +260,37 @@ Runtime database files are intentionally excluded from Git.
 
 The server source code must be able to create the required database schema on a new installation.
 
+## Demo dashboard data
+
+Development-only SQL scripts are available for populating a local database with synthetic historical measurements for dashboard work.
+
+Do not run these scripts against a production database.
+
+The scripts only target the dedicated demo device `sensor-demo-001` with device name `Demo sensor`.
+
+Create demo data in the local development database:
+
+```bash
+sqlite3 data/environment.db < scripts/create_demo_data.sql
+```
+
+Remove the demo device and its measurements:
+
+```bash
+sqlite3 data/environment.db < scripts/delete_demo_data.sql
+```
+
+Verify the inserted measurement count:
+
+```sql
+SELECT device_id, COUNT(*)
+FROM measurements
+WHERE device_id = 'sensor-demo-001'
+GROUP BY device_id;
+```
+
+The create script regenerates about 60 days of hourly history for the demo device and is designed for repeatable local dashboard development.
+
 ## Project structure
 
 Current and planned structure:
