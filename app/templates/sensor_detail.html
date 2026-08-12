@@ -124,5 +124,6 @@
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/highcharts@12.4.0/highcharts.js"></script>
+<script src="{{ url_for('static', path='/js/battery_status.js') }}" defer></script>
 <script src="{{ url_for('static', path='/js/sensor_detail.js') }}" defer></script>
 {% endblock %}

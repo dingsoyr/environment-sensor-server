@@ -74,6 +74,40 @@
     gap: 0.5rem;
 }
 
+.battery-status-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.battery-status-row {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    line-height: 1.2;
+}
+
+.battery-status-summary {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.battery-status-icon {
+    line-height: 1;
+}
+
+.battery-status-voltage {
+    display: block;
+}
+
+.battery-progress {
+    height: 0.9rem;
+    max-width: 18rem;
+}
+
 @media (max-width: 575.98px) {
     .measurement-summary {
         grid-template-columns: 1fr;

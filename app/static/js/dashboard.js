@@ -1,5 +1,6 @@
 const dashboardStatus = document.getElementById("dashboard-status");
 const sensorGrid = document.getElementById("sensor-grid");
+const batteryStatus = window.BatteryStatus;
 
 const STATUS_BADGES = {
     synced: { label: "Synkronisert", className: "text-bg-success" },
@@ -35,18 +36,16 @@ function formatLastSeen(timestamp) {
     }).format(date);
 }
 
-function formatBattery(sensor) {
-    const parts = [];
+function hasBatteryPercent(sensor) {
+    return sensor.battery_percent !== null && sensor.battery_percent !== undefined;
+}
 
-    if (sensor.battery_percent !== null && sensor.battery_percent !== undefined) {
-        parts.push(`${sensor.battery_percent} %`);
+function formatBatteryVoltage(voltage) {
+    if (voltage === null || voltage === undefined) {
+        return "";
     }
 
-    if (sensor.battery_voltage !== null && sensor.battery_voltage !== undefined) {
-        parts.push(`${sensor.battery_voltage.toFixed(2)} V`);
-    }
-
-    return parts.join(" / ");
+    return `${voltage.toFixed(2)} V`;
 }
 
 function clearElement(element) {
@@ -98,10 +97,64 @@ function appendMetaRow(list, label, value) {
     term.textContent = label;
 
     const description = document.createElement("dd");
-    description.textContent = value;
+    if (typeof value === "string") {
+        description.textContent = value;
+    } else {
+        description.className = "status-value";
+        description.appendChild(value);
+    }
 
     list.appendChild(term);
     list.appendChild(description);
+}
+
+function createBatteryStatusContent(sensor) {
+    const status = batteryStatus.getStatus(sensor.battery_percent);
+    const semanticClass = batteryStatus.getSemanticClass(sensor.battery_percent);
+    const wrapper = document.createElement("div");
+    wrapper.className = "battery-status-block";
+    wrapper.dataset.batteryStatus = status;
+
+    const summary = document.createElement("div");
+    summary.className = "battery-status-row";
+
+    const icon = document.createElement("i");
+    icon.className = `bi ${batteryStatus.getIconClass(sensor.battery_percent)} battery-status-icon text-${semanticClass}`;
+    icon.setAttribute("aria-hidden", "true");
+
+    const text = document.createElement("span");
+    text.className = "battery-status-summary";
+
+    const percent = document.createElement("span");
+    percent.className = "fw-semibold";
+    percent.textContent = `${sensor.battery_percent} %`;
+
+    const separator = document.createElement("span");
+    separator.className = "text-body-secondary";
+    separator.setAttribute("aria-hidden", "true");
+    separator.textContent = "·";
+
+    const label = document.createElement("span");
+    label.className = `fw-medium text-${semanticClass}`;
+    label.textContent = batteryStatus.getLabel(sensor.battery_percent);
+
+    text.appendChild(percent);
+    text.appendChild(separator);
+    text.appendChild(label);
+
+    summary.appendChild(icon);
+    summary.appendChild(text);
+    wrapper.appendChild(summary);
+
+    const voltageText = formatBatteryVoltage(sensor.battery_voltage);
+    if (voltageText) {
+        const voltage = document.createElement("small");
+        voltage.className = "battery-status-voltage text-body-secondary";
+        voltage.textContent = voltageText;
+        wrapper.appendChild(voltage);
+    }
+
+    return wrapper;
 }
 
 function createStatusBadge(state) {
@@ -178,9 +231,8 @@ function createSensorCard(sensor) {
     appendMetaRow(metaList, "Signal", formatInteger(sensor.rssi_dbm, "dBm"));
     appendMetaRow(metaList, "Firmware", sensor.firmware_version || "Ukjend");
 
-    const batteryText = formatBattery(sensor);
-    if (batteryText) {
-        appendMetaRow(metaList, "Batteri", batteryText);
+    if (hasBatteryPercent(sensor)) {
+        appendMetaRow(metaList, "Batteri", createBatteryStatusContent(sensor));
     }
 
     body.appendChild(metaList);

@@ -14,6 +14,7 @@ const deviceNameInput = document.getElementById("device-name-input");
 const measurementIntervalInput = document.getElementById("measurement-interval-input");
 const saveButton = document.getElementById("configuration-save-button");
 const periodButtons = Array.from(document.querySelectorAll("[data-period]"));
+const batteryStatus = window.BatteryStatus;
 
 const STATUS_BADGES = {
     synced: { label: "Synkronisert", className: "text-bg-success" },
@@ -108,18 +109,20 @@ function formatLastSeen(timestamp) {
     }).format(new Date(timestamp * 1000));
 }
 
-function formatBattery(sensor) {
-    const parts = [];
+function hasBatteryPercent(sensor) {
+    return sensor.battery_percent !== null && sensor.battery_percent !== undefined;
+}
 
-    if (sensor.battery_percent !== null && sensor.battery_percent !== undefined) {
-        parts.push(`${sensor.battery_percent} %`);
+function hasBatteryVoltage(sensor) {
+    return sensor.battery_voltage !== null && sensor.battery_voltage !== undefined;
+}
+
+function formatBatteryVoltage(voltage) {
+    if (voltage === null || voltage === undefined) {
+        return "";
     }
 
-    if (sensor.battery_voltage !== null && sensor.battery_voltage !== undefined) {
-        parts.push(`${sensor.battery_voltage.toFixed(2)} V`);
-    }
-
-    return parts.join(" / ");
+    return `${voltage.toFixed(2)} V`;
 }
 
 function createStatusBadge(state) {
@@ -175,6 +178,87 @@ function appendMetaRow(list, label, content) {
     list.appendChild(description);
 }
 
+function appendBatterySummaryPart(container, text, className = "") {
+    const part = document.createElement("span");
+    if (className) {
+        part.className = className;
+    }
+    part.textContent = text;
+    container.appendChild(part);
+}
+
+function appendBatterySeparator(container) {
+    const separator = document.createElement("span");
+    separator.className = "text-body-secondary";
+    separator.setAttribute("aria-hidden", "true");
+    separator.textContent = "·";
+    container.appendChild(separator);
+}
+
+function createBatteryStatusContent(detail) {
+    if (!hasBatteryPercent(detail)) {
+        if (!hasBatteryVoltage(detail)) {
+            return null;
+        }
+
+        const fallback = document.createElement("span");
+        fallback.className = "text-body-secondary";
+        fallback.textContent = formatBatteryVoltage(detail.battery_voltage);
+        return fallback;
+    }
+
+    const status = batteryStatus.getStatus(detail.battery_percent);
+    const semanticClass = batteryStatus.getSemanticClass(detail.battery_percent);
+    const label = batteryStatus.getLabel(detail.battery_percent);
+    const safePercent = batteryStatus.clampPercent(detail.battery_percent);
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "battery-status-block";
+    wrapper.dataset.batteryStatus = status;
+
+    const summary = document.createElement("div");
+    summary.className = "battery-status-row";
+
+    const icon = document.createElement("i");
+    icon.className = `bi ${batteryStatus.getIconClass(detail.battery_percent)} battery-status-icon text-${semanticClass}`;
+    icon.setAttribute("aria-hidden", "true");
+
+    const summaryText = document.createElement("span");
+    summaryText.className = "battery-status-summary";
+    appendBatterySummaryPart(summaryText, `${detail.battery_percent} %`, "fw-semibold");
+
+    const voltageText = formatBatteryVoltage(detail.battery_voltage);
+    if (voltageText) {
+        appendBatterySeparator(summaryText);
+        appendBatterySummaryPart(summaryText, voltageText, "text-body-secondary");
+    }
+
+    appendBatterySeparator(summaryText);
+    appendBatterySummaryPart(summaryText, label, `fw-medium text-${semanticClass}`);
+
+    summary.appendChild(icon);
+    summary.appendChild(summaryText);
+    wrapper.appendChild(summary);
+
+    const progress = document.createElement("div");
+    progress.className = "progress battery-progress";
+
+    const progressBar = document.createElement("div");
+    progressBar.className = `progress-bar bg-${semanticClass}`;
+    progressBar.role = "progressbar";
+    progressBar.style.width = `${safePercent}%`;
+    progressBar.setAttribute("aria-valuenow", String(safePercent));
+    progressBar.setAttribute("aria-valuemin", "0");
+    progressBar.setAttribute("aria-valuemax", "100");
+    progressBar.setAttribute("aria-label", `Batterinivå ${detail.battery_percent} %, ${label}`);
+    progressBar.textContent = `${detail.battery_percent} %`;
+
+    progress.appendChild(progressBar);
+    wrapper.appendChild(progress);
+
+    return wrapper;
+}
+
 function renderCurrentValues(latestMeasurement) {
     clearElement(currentValues);
 
@@ -199,9 +283,9 @@ function renderStatusSection(detail) {
     appendMetaRow(statusList, "Firmware", detail.firmware_version || "Ukjend");
     appendMetaRow(statusList, "Device ID", detail.device_id);
 
-    const batteryText = formatBattery(detail);
-    if (batteryText) {
-        appendMetaRow(statusList, "Batteri", batteryText);
+    const batteryContent = createBatteryStatusContent(detail);
+    if (batteryContent) {
+        appendMetaRow(statusList, "Batteri", batteryContent);
     }
 
     appendMetaRow(statusList, "Server config-versjon", String(detail.configuration.config_version));
