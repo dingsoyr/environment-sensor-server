@@ -17,7 +17,7 @@ def test_dashboard_home_page_returns_html_shell(tmp_path: Path) -> None:
         response = client.get("/")
 
     assert response.status_code == 200
-    assert "Environment Sensor" in response.text
+    assert "Miljøsensor" in response.text
     assert "Sensorar" in response.text
     assert "/static/css/dashboard.css" in response.text
     assert "/static/js/battery_status.js" in response.text
@@ -32,7 +32,7 @@ def test_dashboard_sensor_detail_page_returns_html_shell(tmp_path: Path) -> None
         response = client.get("/sensors/sensor-a")
 
     assert response.status_code == 200
-    assert "Environment Sensor" in response.text
+    assert "Miljøsensor" in response.text
     assert "Sensorar" in response.text
     assert "Historikk" in response.text
     assert "Sensorstatus" in response.text
