@@ -37,7 +37,19 @@ def test_dashboard_sensor_detail_page_returns_html_shell(tmp_path: Path) -> None
     assert "Historikk" in response.text
     assert "Sensorstatus" in response.text
     assert "Konfigurasjon" in response.text
+    assert "24 timar" in response.text
+    assert "7 dagar" in response.text
+    assert "30 dagar" in response.text
+    assert "Periode" in response.text
+    assert 'id="history-from-date"' in response.text
+    assert 'id="history-to-date"' in response.text
+    assert 'type="date"' in response.text
+    assert "Frå" in response.text
+    assert "Til" in response.text
+    assert "Vis periode" in response.text
+    assert 'id="history-custom-range"' in response.text
     assert "highcharts.js" in response.text
+    assert "highcharts-more.js" in response.text
     assert "/static/js/battery_status.js" in response.text
     assert "/static/js/sensor_detail.js" in response.text
     assert 'data-device-id="sensor-a"' in response.text
@@ -87,6 +99,14 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert "aria-valuenow" in detail_script_response.text
     assert "if (hasPercent) {" in detail_script_response.text
     assert "batteryStatus.getLabel(detail.battery_percent)" in detail_script_response.text
+    assert 'document.getElementById("history-custom-form")' in detail_script_response.text
+    assert 'document.getElementById("history-from-date")' in detail_script_response.text
+    assert 'document.getElementById("history-to-date")' in detail_script_response.text
+    assert 'data-history-mode' in detail_script_response.text
+    assert 'mode: "custom"' in detail_script_response.text
+    assert 'type: "arearange"' in detail_script_response.text
+    assert 'payload.resolution === "day"' in detail_script_response.text
+    assert 'Frå-datoen kan ikkje vere etter Til-datoen.' in detail_script_response.text
 
     assert css_response.status_code == 200
     assert ".measurement-value-unit" in css_response.text
@@ -96,3 +116,5 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert "white-space: nowrap;" in css_response.text
     assert ".battery-status-row" in css_response.text
     assert ".battery-progress" in css_response.text
+    assert ".history-period-group" in css_response.text
+    assert ".history-range-panel" in css_response.text

@@ -7,6 +7,11 @@ const sensorSyncBadge = document.getElementById("sensor-sync-badge");
 const currentValues = document.getElementById("current-values");
 const historyStatus = document.getElementById("history-status");
 const historyEmpty = document.getElementById("history-empty");
+const historyCustomRange = document.getElementById("history-custom-range");
+const historyCustomForm = document.getElementById("history-custom-form");
+const historyFromInput = document.getElementById("history-from-date");
+const historyToInput = document.getElementById("history-to-date");
+const historyCustomSubmit = document.getElementById("history-custom-submit");
 const statusList = document.getElementById("sensor-status-list");
 const configurationAlert = document.getElementById("configuration-alert");
 const configurationForm = document.getElementById("configuration-form");
@@ -14,6 +19,7 @@ const deviceNameInput = document.getElementById("device-name-input");
 const measurementIntervalInput = document.getElementById("measurement-interval-input");
 const saveButton = document.getElementById("configuration-save-button");
 const periodButtons = Array.from(document.querySelectorAll("[data-period]"));
+const historyModeButtons = Array.from(document.querySelectorAll("[data-history-mode]"));
 const batteryStatus = window.BatteryStatus;
 
 const STATUS_BADGES = {
@@ -26,19 +32,28 @@ const CHARTS = {
     temperature: {
         containerId: "temperature-chart",
         title: "Temperatur",
-        valueKey: "temperature_c",
+        rawValueKey: "temperature_c",
+        averageValueKey: "temperature_avg_c",
+        minimumValueKey: "temperature_min_c",
+        maximumValueKey: "temperature_max_c",
         unit: "°C",
     },
     humidity: {
         containerId: "humidity-chart",
         title: "Luftfukt",
-        valueKey: "humidity_percent",
+        rawValueKey: "humidity_percent",
+        averageValueKey: "humidity_avg_percent",
+        minimumValueKey: "humidity_min_percent",
+        maximumValueKey: "humidity_max_percent",
         unit: "%",
     },
     pressure: {
         containerId: "pressure-chart",
         title: "Lufttrykk",
-        valueKey: "pressure_hpa",
+        rawValueKey: "pressure_hpa",
+        averageValueKey: "pressure_avg_hpa",
+        minimumValueKey: "pressure_min_hpa",
+        maximumValueKey: "pressure_max_hpa",
         unit: "hPa",
     },
 };
@@ -46,6 +61,7 @@ const CHARTS = {
 const deviceId = pageRoot ? pageRoot.dataset.deviceId || "" : "";
 
 let sensorDetail = null;
+let activeHistoryMode = "period";
 let activePeriod = "24h";
 let historyRequestId = 0;
 
@@ -325,17 +341,199 @@ function setPeriodButtonsDisabled(disabled) {
     });
 }
 
-function setActivePeriod(period) {
-    activePeriod = period;
+function setHistoryControlsDisabled(disabled) {
+    historyModeButtons.forEach((button) => {
+        button.disabled = disabled;
+    });
 
-    periodButtons.forEach((button) => {
-        const isActive = button.dataset.period === period;
+    if (historyFromInput) {
+        historyFromInput.disabled = disabled;
+    }
+
+    if (historyToInput) {
+        historyToInput.disabled = disabled;
+    }
+
+    if (historyCustomSubmit) {
+        historyCustomSubmit.disabled = disabled;
+    }
+}
+
+function updateHistoryModeButtons() {
+    historyModeButtons.forEach((button) => {
+        const isPeriodButton = button.dataset.historyMode === "period";
+        const isActive = isPeriodButton
+            ? activeHistoryMode === "period" && button.dataset.period === activePeriod
+            : activeHistoryMode === "custom";
         button.classList.toggle("active", isActive);
         button.setAttribute("aria-pressed", isActive ? "true" : "false");
+
+        if (!isPeriodButton) {
+            button.setAttribute("aria-expanded", activeHistoryMode === "custom" ? "true" : "false");
+        }
     });
 }
 
-function renderChart(containerId, title, unit, points) {
+function setActiveFixedPeriod(period) {
+    activeHistoryMode = "period";
+    activePeriod = period;
+    if (historyCustomRange) {
+        historyCustomRange.hidden = true;
+    }
+    updateHistoryModeButtons();
+}
+
+function setCustomHistoryModeActive() {
+    activeHistoryMode = "custom";
+    if (historyCustomRange) {
+        historyCustomRange.hidden = false;
+    }
+    updateHistoryModeButtons();
+}
+
+function formatDateInputValue(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+function ensureCustomDateDefaults() {
+    if (!historyFromInput || !historyToInput) {
+        return;
+    }
+
+    if (historyFromInput.value && historyToInput.value) {
+        return;
+    }
+
+    const today = new Date();
+    const fromDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    fromDate.setFullYear(fromDate.getFullYear() - 1);
+
+    historyFromInput.value = formatDateInputValue(fromDate);
+    historyToInput.value = formatDateInputValue(today);
+}
+
+function parseLocalDateInput(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) {
+        return null;
+    }
+
+    const year = Number.parseInt(match[1], 10);
+    const monthIndex = Number.parseInt(match[2], 10) - 1;
+    const day = Number.parseInt(match[3], 10);
+    const date = new Date(year, monthIndex, day);
+
+    if (
+        date.getFullYear() !== year
+        || date.getMonth() !== monthIndex
+        || date.getDate() !== day
+    ) {
+        return null;
+    }
+
+    return date;
+}
+
+function createCustomHistoryRequest() {
+    const fromValue = historyFromInput ? historyFromInput.value : "";
+    const toValue = historyToInput ? historyToInput.value : "";
+
+    if (!fromValue || !toValue) {
+        return { error: "Vel både Frå og Til før du viser perioden." };
+    }
+
+    const fromDate = parseLocalDateInput(fromValue);
+    const toDate = parseLocalDateInput(toValue);
+
+    if (!fromDate || !toDate) {
+        return { error: "Vel gyldige datoar for Frå og Til." };
+    }
+
+    if (fromDate.getTime() > toDate.getTime()) {
+        return { error: "Frå-datoen kan ikkje vere etter Til-datoen." };
+    }
+
+    const toExclusiveDate = new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate() + 1);
+
+    return {
+        request: {
+            mode: "custom",
+            from: Math.floor(fromDate.getTime() / 1000),
+            to: Math.floor(toExclusiveDate.getTime() / 1000),
+        },
+    };
+}
+
+function createRawSeries(points, valueKey) {
+    return points.map((point) => [
+        point.measured_at * 1000,
+        point[valueKey],
+    ]);
+}
+
+function createAggregateAverageSeries(points, valueKey) {
+    return points.map((point) => [
+        point.period_start * 1000,
+        point[valueKey],
+    ]);
+}
+
+function createAggregateRangeSeries(points, minimumKey, maximumKey) {
+    return points.map((point) => [
+        point.period_start * 1000,
+        point[minimumKey],
+        point[maximumKey],
+    ]);
+}
+
+function buildTooltipOptions(title, unit, resolution) {
+    if (resolution === "day") {
+        return {
+            shared: true,
+            formatter() {
+                const averagePoint = this.points.find(
+                    (point) => point.series.userOptions.custom?.kind === "average",
+                );
+                const rangePoint = this.points.find(
+                    (point) => point.series.userOptions.custom?.kind === "range",
+                );
+
+                const parts = [
+                    `<span>${Highcharts.dateFormat("%e. %b %Y", this.x)}</span>`,
+                ];
+
+                if (averagePoint) {
+                    parts.push(
+                        `<br><span>${title}, gjennomsnitt: <b>${Highcharts.numberFormat(averagePoint.y, 1)} ${unit}</b></span>`,
+                    );
+                }
+
+                if (rangePoint) {
+                    parts.push(
+                        `<br><span>${title}, minimum: <b>${Highcharts.numberFormat(rangePoint.point.low, 1)} ${unit}</b></span>`,
+                    );
+                    parts.push(
+                        `<br><span>${title}, maksimum: <b>${Highcharts.numberFormat(rangePoint.point.high, 1)} ${unit}</b></span>`,
+                    );
+                }
+
+                return parts.join("");
+            },
+        };
+    }
+
+    return {
+        xDateFormat: "%e. %b %Y, %H:%M",
+        pointFormatter() {
+            return `<span>${title}: <b>${Highcharts.numberFormat(this.y, 1)} ${unit}</b></span>`;
+        },
+    };
+}
+
+function renderChart(containerId, title, unit, series, resolution) {
     Highcharts.chart(containerId, {
         chart: {
             height: 280,
@@ -357,18 +555,8 @@ function renderChart(containerId, title, unit, points) {
                 text: unit,
             },
         },
-        tooltip: {
-            xDateFormat: "%e. %b %Y, %H:%M",
-            pointFormatter() {
-                return `<span>${title}: <b>${Highcharts.numberFormat(this.y, 1)} ${unit}</b></span>`;
-            },
-        },
-        series: [
-            {
-                type: "line",
-                data: points,
-            },
-        ],
+        tooltip: buildTooltipOptions(title, unit, resolution),
+        series,
         responsive: {
             rules: [
                 {
@@ -386,35 +574,118 @@ function renderChart(containerId, title, unit, points) {
     });
 }
 
-function renderHistory(points) {
-    const seriesPoints = Object.values(CHARTS).reduce((accumulator, chartConfig) => {
-        accumulator[chartConfig.valueKey] = points.map((point) => [
-            point.measured_at * 1000,
-            point[chartConfig.valueKey],
-        ]);
-        return accumulator;
-    }, {});
-
+function renderRawHistory(points) {
     renderChart(
         CHARTS.temperature.containerId,
         CHARTS.temperature.title,
         CHARTS.temperature.unit,
-        seriesPoints.temperature_c,
+        [
+            {
+                type: "line",
+                data: createRawSeries(points, CHARTS.temperature.rawValueKey),
+            },
+        ],
+        "raw",
     );
     renderChart(
         CHARTS.humidity.containerId,
         CHARTS.humidity.title,
         CHARTS.humidity.unit,
-        seriesPoints.humidity_percent,
+        [
+            {
+                type: "line",
+                data: createRawSeries(points, CHARTS.humidity.rawValueKey),
+            },
+        ],
+        "raw",
     );
     renderChart(
         CHARTS.pressure.containerId,
         CHARTS.pressure.title,
         CHARTS.pressure.unit,
-        seriesPoints.pressure_hpa,
+        [
+            {
+                type: "line",
+                data: createRawSeries(points, CHARTS.pressure.rawValueKey),
+            },
+        ],
+        "raw",
     );
 
     historyEmpty.hidden = points.length !== 0;
+}
+
+function createAggregateSeries(chartConfig, points) {
+    return [
+        {
+            type: "arearange",
+            name: `${chartConfig.title} spenn`,
+            data: createAggregateRangeSeries(
+                points,
+                chartConfig.minimumValueKey,
+                chartConfig.maximumValueKey,
+            ),
+            fillOpacity: 0.12,
+            lineWidth: 0,
+            marker: {
+                enabled: false,
+            },
+            zIndex: 0,
+            custom: {
+                kind: "range",
+            },
+        },
+        {
+            type: "line",
+            name: `${chartConfig.title} gjennomsnitt`,
+            data: createAggregateAverageSeries(points, chartConfig.averageValueKey),
+            lineWidth: 2,
+            marker: {
+                enabled: false,
+            },
+            zIndex: 1,
+            custom: {
+                kind: "average",
+            },
+        },
+    ];
+}
+
+function renderAggregatedHistory(points) {
+    renderChart(
+        CHARTS.temperature.containerId,
+        CHARTS.temperature.title,
+        CHARTS.temperature.unit,
+        createAggregateSeries(CHARTS.temperature, points),
+        "day",
+    );
+    renderChart(
+        CHARTS.humidity.containerId,
+        CHARTS.humidity.title,
+        CHARTS.humidity.unit,
+        createAggregateSeries(CHARTS.humidity, points),
+        "day",
+    );
+    renderChart(
+        CHARTS.pressure.containerId,
+        CHARTS.pressure.title,
+        CHARTS.pressure.unit,
+        createAggregateSeries(CHARTS.pressure, points),
+        "day",
+    );
+
+    historyEmpty.hidden = points.length !== 0;
+}
+
+function renderHistoryPayload(payload) {
+    const points = Array.isArray(payload.points) ? payload.points : [];
+
+    if (payload.resolution === "day") {
+        renderAggregatedHistory(points);
+        return;
+    }
+
+    renderRawHistory(points);
 }
 
 async function fetchJson(url, options = {}) {
@@ -447,29 +718,38 @@ async function loadSensorDetail() {
     pageContent.hidden = false;
 }
 
-async function loadHistory(period) {
+function buildHistoryUrl(request) {
+    const encodedDeviceId = encodeURIComponent(deviceId);
+
+    if (request.mode === "custom") {
+        const params = new URLSearchParams({
+            from: String(request.from),
+            to: String(request.to),
+        });
+        return `/api/dashboard/sensors/${encodedDeviceId}/history?${params.toString()}`;
+    }
+
+    return `/api/dashboard/sensors/${encodedDeviceId}/history?period=${encodeURIComponent(request.period)}`;
+}
+
+async function loadHistory(request) {
     const requestId = historyRequestId + 1;
     historyRequestId = requestId;
 
-    setActivePeriod(period);
-    setPeriodButtonsDisabled(true);
+    setHistoryControlsDisabled(true);
     setHistoryStatus(createAlert("Lastar historikk...", "alert-light border", "status"));
     historyEmpty.hidden = true;
 
     try {
-        const encodedDeviceId = encodeURIComponent(deviceId);
-        const payload = await fetchJson(
-            `/api/dashboard/sensors/${encodedDeviceId}/history?period=${encodeURIComponent(period)}`,
-            {
-                headers: { Accept: "application/json" },
-            },
-        );
+        const payload = await fetchJson(buildHistoryUrl(request), {
+            headers: { Accept: "application/json" },
+        });
 
         if (requestId !== historyRequestId) {
             return;
         }
 
-        renderHistory(Array.isArray(payload.points) ? payload.points : []);
+        renderHistoryPayload(payload);
         setHistoryStatus(null);
     } catch (error) {
         if (requestId !== historyRequestId) {
@@ -479,9 +759,27 @@ async function loadHistory(period) {
         setHistoryStatus(createAlert("Klarte ikkje å laste historikken no.", "alert-danger"));
     } finally {
         if (requestId === historyRequestId) {
-            setPeriodButtonsDisabled(false);
+            setHistoryControlsDisabled(false);
         }
     }
+}
+
+async function applyFixedPeriod(period) {
+    setActiveFixedPeriod(period);
+    await loadHistory({ mode: "period", period });
+}
+
+async function submitCustomHistoryRange(event) {
+    event.preventDefault();
+
+    const customRequestResult = createCustomHistoryRequest();
+    if (customRequestResult.error) {
+        setHistoryStatus(createAlert(customRequestResult.error, "alert-warning py-2"));
+        return;
+    }
+
+    setCustomHistoryModeActive();
+    await loadHistory(customRequestResult.request);
 }
 
 function getConfigurationPayload() {
@@ -560,7 +858,7 @@ async function initializeSensorDetailPage() {
 
     try {
         await loadSensorDetail();
-        await loadHistory(activePeriod);
+        await applyFixedPeriod(activePeriod);
     } catch (error) {
         if (error.status === 404) {
             renderNotFoundState();
@@ -571,15 +869,28 @@ async function initializeSensorDetailPage() {
     }
 }
 
-periodButtons.forEach((button) => {
+historyModeButtons.forEach((button) => {
     button.addEventListener("click", () => {
-        const nextPeriod = button.dataset.period;
-        if (!nextPeriod || nextPeriod === activePeriod) {
+        const nextMode = button.dataset.historyMode;
+
+        if (nextMode === "custom") {
+            ensureCustomDateDefaults();
+            setCustomHistoryModeActive();
+            setHistoryStatus(null);
             return;
         }
 
-        void loadHistory(nextPeriod);
+        const nextPeriod = button.dataset.period;
+        if (!nextPeriod || (activeHistoryMode === "period" && nextPeriod === activePeriod)) {
+            return;
+        }
+
+        void applyFixedPeriod(nextPeriod);
     });
+});
+
+historyCustomForm.addEventListener("submit", (event) => {
+    void submitCustomHistoryRange(event);
 });
 
 configurationForm.addEventListener("submit", (event) => {

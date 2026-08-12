@@ -37,12 +37,34 @@
                     <h2 class="h4 mb-1">Historikk</h2>
                     <p class="text-body-secondary mb-0">Vel tidsperiode for alle grafane.</p>
                 </div>
-                <div class="btn-group" role="group" aria-label="Vel tidsperiode">
-                    <button type="button" class="btn btn-outline-primary active" data-period="24h">24 timar</button>
-                    <button type="button" class="btn btn-outline-primary" data-period="7d">7 dagar</button>
-                    <button type="button" class="btn btn-outline-primary" data-period="30d">30 dagar</button>
+                <div class="btn-group history-period-group" role="group" aria-label="Vel tidsperiode">
+                    <button type="button" class="btn btn-outline-primary active" data-history-mode="period" data-period="24h">24 timar</button>
+                    <button type="button" class="btn btn-outline-primary" data-history-mode="period" data-period="7d">7 dagar</button>
+                    <button type="button" class="btn btn-outline-primary" data-history-mode="period" data-period="30d">30 dagar</button>
+                    <button
+                        type="button"
+                        class="btn btn-outline-primary"
+                        data-history-mode="custom"
+                        aria-controls="history-custom-range"
+                        aria-expanded="false"
+                    >Periode</button>
                 </div>
             </div>
+            <section id="history-custom-range" class="history-range-panel border rounded-3 p-3 mb-3" hidden>
+                <form id="history-custom-form" class="row g-3 align-items-lg-end" novalidate>
+                    <div class="col-12 col-lg-5">
+                        <label class="form-label" for="history-from-date">Frå</label>
+                        <input class="form-control" id="history-from-date" name="from" type="date" required>
+                    </div>
+                    <div class="col-12 col-lg-5">
+                        <label class="form-label" for="history-to-date">Til</label>
+                        <input class="form-control" id="history-to-date" name="to" type="date" required>
+                    </div>
+                    <div class="col-12 col-lg-2 history-range-actions">
+                        <button id="history-custom-submit" class="btn btn-primary w-100" type="submit">Vis periode</button>
+                    </div>
+                </form>
+            </section>
             <div id="history-status" class="mb-3" aria-live="polite"></div>
             <div id="history-empty" class="alert alert-light border mb-3" role="status" hidden>
                 Ingen historikk for vald periode enno.
@@ -124,6 +146,7 @@
 
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/highcharts@12.4.0/highcharts.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highcharts@12.4.0/highcharts-more.js"></script>
 <script src="{{ url_for('static', path='/js/battery_status.js') }}" defer></script>
 <script src="{{ url_for('static', path='/js/sensor_detail.js') }}" defer></script>
 {% endblock %}

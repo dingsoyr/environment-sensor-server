@@ -128,6 +128,26 @@
     max-width: 18rem;
 }
 
+.history-period-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.history-period-group > .btn {
+    flex: 1 1 auto;
+    border-radius: var(--bs-btn-border-radius) !important;
+}
+
+.history-range-panel {
+    background-color: var(--bs-tertiary-bg);
+}
+
+.history-range-actions {
+    display: flex;
+    align-items: stretch;
+}
+
 @media (min-width: 768px) and (max-width: 1199.98px) {
     .measurement-value {
         font-size: 1rem;
@@ -165,5 +185,17 @@
 
     .chart-surface {
         min-height: 240px;
+    }
+
+    .history-period-group {
+        width: 100%;
+    }
+
+    .history-period-group > .btn {
+        min-width: calc(50% - 0.25rem);
+    }
+
+    .history-range-actions {
+        width: 100%;
     }
 }
