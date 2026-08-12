@@ -1,6 +1,7 @@
 const dashboardStatus = document.getElementById("dashboard-status");
 const sensorGrid = document.getElementById("sensor-grid");
 const batteryStatus = window.BatteryStatus;
+const measurementColors = window.MeasurementColors;
 
 const STATUS_BADGES = {
     synced: { label: "Synkronisert", className: "text-bg-success" },
@@ -78,7 +79,7 @@ function renderEmptyState() {
     setStatusMessage(empty);
 }
 
-function createMeasurementTile(label, value) {
+function createMeasurementTile(label, value, measurementType) {
     const column = document.createElement("div");
     column.className = "col d-flex";
 
@@ -95,6 +96,8 @@ function createMeasurementTile(label, value) {
     if (value.text) {
         valueElement.textContent = value.text;
     } else {
+        measurementColors.applyMeasurementValueColor(valueElement, measurementType);
+
         const numberElement = document.createElement("span");
         numberElement.className = "measurement-value-number";
         numberElement.textContent = value.number;
@@ -233,18 +236,21 @@ function createSensorCard(sensor) {
             createMeasurementTile(
                 "Temperatur",
                 formatNumber(sensor.latest_measurement.temperature_c, "°C"),
+                "temperature",
             ),
         );
         measurementSummary.appendChild(
             createMeasurementTile(
                 "Luftfukt",
                 formatNumber(sensor.latest_measurement.humidity_percent, "%"),
+                "humidity",
             ),
         );
         measurementSummary.appendChild(
             createMeasurementTile(
                 "Lufttrykk",
                 formatNumber(sensor.latest_measurement.pressure_hpa, "hPa"),
+                "pressure",
             ),
         );
         body.appendChild(measurementSummary);

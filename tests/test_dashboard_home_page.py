@@ -21,6 +21,7 @@ def test_dashboard_home_page_returns_html_shell(tmp_path: Path) -> None:
     assert "Sensorar" in response.text
     assert "/static/css/dashboard.css" in response.text
     assert "/static/js/battery_status.js" in response.text
+    assert "/static/js/measurement_colors.js" in response.text
     assert "/static/js/dashboard.js" in response.text
     assert "Oversikt over registrerte sensorar" in response.text
 
@@ -51,6 +52,7 @@ def test_dashboard_sensor_detail_page_returns_html_shell(tmp_path: Path) -> None
     assert "highcharts.js" in response.text
     assert "highcharts-more.js" in response.text
     assert "/static/js/battery_status.js" in response.text
+    assert "/static/js/measurement_colors.js" in response.text
     assert "/static/js/sensor_detail.js" in response.text
     assert 'data-device-id="sensor-a"' in response.text
 
@@ -71,6 +73,7 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
 
     with create_client(database_path) as client:
         helper_response = client.get("/static/js/battery_status.js")
+        measurement_colors_response = client.get("/static/js/measurement_colors.js")
         dashboard_script_response = client.get("/static/js/dashboard.js")
         detail_script_response = client.get("/static/js/sensor_detail.js")
         css_response = client.get("/static/css/dashboard.css")
@@ -83,17 +86,30 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert "bi-battery-half" in helper_response.text
     assert 'iconClass: "bi-battery"' in helper_response.text
 
+    assert measurement_colors_response.status_code == 200
+    assert 'temperature: "#c4575a"' in measurement_colors_response.text
+    assert 'humidity: "#4d8a57"' in measurement_colors_response.text
+    assert 'pressure: "#7b62b3"' in measurement_colors_response.text
+    assert "window.MeasurementColors" in measurement_colors_response.text
+    assert "function applyMeasurementValueColor(element, measurementType)" in measurement_colors_response.text
+
     assert dashboard_script_response.status_code == 200
     assert "BatteryStatus" in dashboard_script_response.text
+    assert "const measurementColors = window.MeasurementColors;" in dashboard_script_response.text
     assert "dataset.batteryStatus" in dashboard_script_response.text
     assert "batteryStatus.getLabel(sensor.battery_percent)" in dashboard_script_response.text
     assert 'appendMetaRow(metaList, "Batteri", createBatteryStatusContent(sensor));' in dashboard_script_response.text
     assert 'measurementSummary.className = "measurement-summary row row-cols-3 g-0 g-sm-2";' in dashboard_script_response.text
     assert 'unitElement.className = "measurement-value-unit";' in dashboard_script_response.text
+    assert "measurementColors.applyMeasurementValueColor(valueElement, measurementType);" in dashboard_script_response.text
+    assert '"temperature"' in dashboard_script_response.text
+    assert '"humidity"' in dashboard_script_response.text
+    assert '"pressure"' in dashboard_script_response.text
     assert "hasBatteryPercent(sensor) || hasBatteryVoltage(sensor)" not in dashboard_script_response.text
 
     assert detail_script_response.status_code == 200
     assert "BatteryStatus" in detail_script_response.text
+    assert "const measurementColors = window.MeasurementColors;" in detail_script_response.text
     assert "battery-progress" in detail_script_response.text
     assert "progress-bar" in detail_script_response.text
     assert "aria-valuenow" in detail_script_response.text
@@ -107,10 +123,10 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert 'type: "arearange"' in detail_script_response.text
     assert 'payload.resolution === "day"' in detail_script_response.text
     assert 'Frå-datoen kan ikkje vere etter Til-datoen.' in detail_script_response.text
-    assert 'const CHART_COLORS = {' in detail_script_response.text
-    assert 'temperature: "#c4575a"' in detail_script_response.text
-    assert 'humidity: "#4d8a57"' in detail_script_response.text
-    assert 'pressure: "#7b62b3"' in detail_script_response.text
+    assert 'measurementColors.getMeasurementColor("temperature")' in detail_script_response.text
+    assert 'measurementColors.getMeasurementColor("humidity")' in detail_script_response.text
+    assert 'measurementColors.getMeasurementColor("pressure")' in detail_script_response.text
+    assert 'measurementColors.applyMeasurementValueColor(valueElement, measurementType);' in detail_script_response.text
     assert 'color: CHARTS.temperature.color' in detail_script_response.text
     assert 'color: CHARTS.humidity.color' in detail_script_response.text
     assert 'color: CHARTS.pressure.color' in detail_script_response.text

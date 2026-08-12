@@ -21,6 +21,7 @@ const saveButton = document.getElementById("configuration-save-button");
 const periodButtons = Array.from(document.querySelectorAll("[data-period]"));
 const historyModeButtons = Array.from(document.querySelectorAll("[data-history-mode]"));
 const batteryStatus = window.BatteryStatus;
+const measurementColors = window.MeasurementColors;
 
 const STATUS_BADGES = {
     synced: { label: "Synkronisert", className: "text-bg-success" },
@@ -28,17 +29,11 @@ const STATUS_BADGES = {
     device_ahead: { label: "Sensor framfor server", className: "text-bg-secondary" },
 };
 
-const CHART_COLORS = {
-    temperature: "#c4575a",
-    humidity: "#4d8a57",
-    pressure: "#7b62b3",
-};
-
 const CHARTS = {
     temperature: {
         containerId: "temperature-chart",
         title: "Temperatur",
-        color: CHART_COLORS.temperature,
+        color: measurementColors.getMeasurementColor("temperature"),
         rawValueKey: "temperature_c",
         averageValueKey: "temperature_avg_c",
         minimumValueKey: "temperature_min_c",
@@ -48,7 +43,7 @@ const CHARTS = {
     humidity: {
         containerId: "humidity-chart",
         title: "Luftfukt",
-        color: CHART_COLORS.humidity,
+        color: measurementColors.getMeasurementColor("humidity"),
         rawValueKey: "humidity_percent",
         averageValueKey: "humidity_avg_percent",
         minimumValueKey: "humidity_min_percent",
@@ -58,7 +53,7 @@ const CHARTS = {
     pressure: {
         containerId: "pressure-chart",
         title: "Lufttrykk",
-        color: CHART_COLORS.pressure,
+        color: measurementColors.getMeasurementColor("pressure"),
         rawValueKey: "pressure_hpa",
         averageValueKey: "pressure_avg_hpa",
         minimumValueKey: "pressure_min_hpa",
@@ -109,10 +104,13 @@ function setConfigurationAlert(node) {
 
 function formatNumber(value, unit) {
     if (value === null || value === undefined) {
-        return "Ingen målingar enno";
+        return { text: "Ingen målingar enno" };
     }
 
-    return `${value.toFixed(1)} ${unit}`;
+    return {
+        number: value.toFixed(1),
+        unit,
+    };
 }
 
 function formatInteger(value, unit) {
@@ -162,7 +160,7 @@ function createStatusBadge(state) {
     return badge;
 }
 
-function createMeasurementTile(label, value) {
+function createMeasurementTile(label, value, measurementType) {
     const column = document.createElement("div");
     column.className = "col";
 
@@ -178,7 +176,23 @@ function createMeasurementTile(label, value) {
 
     const valueElement = document.createElement("span");
     valueElement.className = "measurement-value";
-    valueElement.textContent = value;
+
+    if (value.text) {
+        valueElement.textContent = value.text;
+    } else {
+        measurementColors.applyMeasurementValueColor(valueElement, measurementType);
+
+        const numberElement = document.createElement("span");
+        numberElement.className = "measurement-value-number";
+        numberElement.textContent = value.number;
+
+        const unitElement = document.createElement("span");
+        unitElement.className = "measurement-value-unit";
+        unitElement.textContent = value.unit;
+
+        valueElement.appendChild(numberElement);
+        valueElement.appendChild(unitElement);
+    }
 
     body.appendChild(labelElement);
     body.appendChild(valueElement);
@@ -294,13 +308,25 @@ function renderCurrentValues(latestMeasurement) {
     const measurement = latestMeasurement || {};
 
     currentValues.appendChild(
-        createMeasurementTile("Temperatur", formatNumber(measurement.temperature_c, "°C")),
+        createMeasurementTile(
+            "Temperatur",
+            formatNumber(measurement.temperature_c, "°C"),
+            "temperature",
+        ),
     );
     currentValues.appendChild(
-        createMeasurementTile("Luftfukt", formatNumber(measurement.humidity_percent, "%")),
+        createMeasurementTile(
+            "Luftfukt",
+            formatNumber(measurement.humidity_percent, "%"),
+            "humidity",
+        ),
     );
     currentValues.appendChild(
-        createMeasurementTile("Lufttrykk", formatNumber(measurement.pressure_hpa, "hPa")),
+        createMeasurementTile(
+            "Lufttrykk",
+            formatNumber(measurement.pressure_hpa, "hPa"),
+            "pressure",
+        ),
     );
 }
 
