@@ -43,6 +43,16 @@ class DashboardSensorRecord:
     latest_measurement: LatestMeasurementRecord | None
 
 
+@dataclass(frozen=True)
+class DashboardSensorHistoryPointRecord:
+    sequence: int
+    measured_at: int
+    timestamp_valid: bool
+    temperature_c: float
+    humidity_percent: float
+    pressure_hpa: float
+
+
 def _build_dashboard_sensor_record(row: sqlite3.Row | tuple) -> DashboardSensorRecord:
     latest_measurement = None
     if row[10] is not None:
@@ -155,6 +165,9 @@ def initialize_database(database_path: str | Path | None = None) -> Path:
                 UNIQUE (device_id, sequence),
                 FOREIGN KEY (device_id) REFERENCES devices(device_id)
             );
+
+            CREATE INDEX IF NOT EXISTS idx_measurements_device_measured_at
+            ON measurements(device_id, measured_at);
             """
         )
 
@@ -183,6 +196,23 @@ def get_device_configuration(
         device_name=row[1],
         measurement_interval_seconds=row[2],
     )
+
+
+def device_exists(
+    device_id: str,
+    database_path: str | Path | None = None,
+) -> bool:
+    with connect_database(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT 1
+            FROM devices
+            WHERE device_id = ?
+            """,
+            (device_id,),
+        ).fetchone()
+
+    return row is not None
 
 
 def _derive_config_sync_state(
@@ -230,3 +260,41 @@ def get_dashboard_sensor(
         return None
 
     return _build_dashboard_sensor_record(row)
+
+
+def list_dashboard_sensor_history(
+    device_id: str,
+    measured_from: int,
+    measured_to: int,
+    database_path: str | Path | None = None,
+) -> list[DashboardSensorHistoryPointRecord]:
+    with connect_database(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                sequence,
+                measured_at,
+                timestamp_valid,
+                temperature_c,
+                humidity_percent,
+                pressure_hpa
+            FROM measurements
+            WHERE device_id = ?
+              AND measured_at >= ?
+              AND measured_at < ?
+            ORDER BY measured_at ASC, sequence ASC
+            """,
+            (device_id, measured_from, measured_to),
+        ).fetchall()
+
+    return [
+        DashboardSensorHistoryPointRecord(
+            sequence=row[0],
+            measured_at=row[1],
+            timestamp_valid=bool(row[2]),
+            temperature_c=row[3],
+            humidity_percent=row[4],
+            pressure_hpa=row[5],
+        )
+        for row in rows
+    ]

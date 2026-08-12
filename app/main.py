@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import sqlite3
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 
 from app.api_v1_models import (
     DeviceConfiguration,
@@ -16,16 +18,34 @@ from app.dashboard_models import (
     DashboardLatestMeasurement,
     DashboardSensorConfiguration,
     DashboardSensorDetail,
+    DashboardSensorHistoryPoint,
+    DashboardSensorHistoryResponse,
     DashboardSensor,
     DashboardSensorsResponse,
 )
 from app.database import (
+    device_exists,
     get_dashboard_sensor,
     get_device_configuration,
     initialize_database,
+    list_dashboard_sensor_history,
     list_dashboard_sensors,
 )
 from app.measurement_ingestion import ingest_measurement_upload
+
+
+HistoryPeriod = Literal["24h", "7d", "30d"]
+
+PERIOD_SECONDS: dict[HistoryPeriod, int] = {
+    "24h": 24 * 60 * 60,
+    "7d": 7 * 24 * 60 * 60,
+    "30d": 30 * 24 * 60 * 60,
+}
+
+
+def calculate_history_window(period: HistoryPeriod, now: int | None = None) -> tuple[int, int]:
+    current_time = int(time.time()) if now is None else now
+    return current_time - PERIOD_SECONDS[period], current_time
 
 
 @asynccontextmanager
@@ -126,6 +146,49 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
                 config_sync_state=sensor_record.config_sync_state,
             ),
             latest_measurement=latest_measurement,
+        )
+
+    @app.get(
+        "/api/dashboard/sensors/{device_id}/history",
+        response_model=DashboardSensorHistoryResponse,
+        response_model_by_alias=True,
+    )
+    def get_dashboard_sensor_history(
+        device_id: str,
+        request: Request,
+        period: HistoryPeriod = Query(...),
+    ) -> DashboardSensorHistoryResponse:
+        history_from, history_to = calculate_history_window(period)
+
+        try:
+            if not device_exists(device_id, database_path=request.app.state.database_path):
+                raise HTTPException(status_code=404, detail="Not Found")
+
+            point_records = list_dashboard_sensor_history(
+                device_id,
+                measured_from=history_from,
+                measured_to=history_to,
+                database_path=request.app.state.database_path,
+            )
+        except sqlite3.DatabaseError as error:
+            raise HTTPException(status_code=500, detail="Internal Server Error") from error
+
+        return DashboardSensorHistoryResponse(
+            device_id=device_id,
+            period=period,
+            from_=history_from,
+            to=history_to,
+            points=[
+                DashboardSensorHistoryPoint(
+                    sequence=point_record.sequence,
+                    measured_at=point_record.measured_at,
+                    timestamp_valid=point_record.timestamp_valid,
+                    temperature_c=point_record.temperature_c,
+                    humidity_percent=point_record.humidity_percent,
+                    pressure_hpa=point_record.pressure_hpa,
+                )
+                for point_record in point_records
+            ],
         )
 
     @app.post(

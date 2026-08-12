@@ -69,6 +69,27 @@ def test_initialize_database_is_idempotent(tmp_path: Path) -> None:
     assert table_count == 2
 
 
+def test_initialize_database_creates_history_lookup_index(tmp_path: Path) -> None:
+    database_path = tmp_path / "environment.db"
+
+    initialize_database(database_path)
+
+    with connect_database(database_path) as connection:
+        indexes = {
+            row[1]: row[2]
+            for row in connection.execute("PRAGMA index_list(measurements)")
+        }
+        indexed_columns = [
+            row[2]
+            for row in connection.execute(
+                "PRAGMA index_info(idx_measurements_device_measured_at)"
+            )
+        ]
+
+    assert indexes["idx_measurements_device_measured_at"] == 0
+    assert indexed_columns == ["device_id", "measured_at"]
+
+
 def test_measurements_are_unique_per_device_and_sequence(tmp_path: Path) -> None:
     database_path = tmp_path / "environment.db"
     initialize_database(database_path)
