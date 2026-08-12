@@ -127,6 +127,9 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert 'measurementColors.getMeasurementColor("humidity")' in detail_script_response.text
     assert 'measurementColors.getMeasurementColor("pressure")' in detail_script_response.text
     assert 'measurementColors.applyMeasurementValueColor(valueElement, measurementType);' in detail_script_response.text
+    assert "Highcharts.setOptions({" in detail_script_response.text
+    assert "useUTC: false" in detail_script_response.text
+    assert 'Highcharts.dateFormat("%e. %b %Y, %H:%M", this.x)' in detail_script_response.text
     assert 'color: CHARTS.temperature.color' in detail_script_response.text
     assert 'color: CHARTS.humidity.color' in detail_script_response.text
     assert 'color: CHARTS.pressure.color' in detail_script_response.text

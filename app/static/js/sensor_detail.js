@@ -69,6 +69,12 @@ let activeHistoryMode = "period";
 let activePeriod = "24h";
 let historyRequestId = 0;
 
+Highcharts.setOptions({
+    time: {
+        useUTC: false,
+    },
+});
+
 function clearElement(element) {
     while (element.firstChild) {
         element.removeChild(element.firstChild);
@@ -541,7 +547,7 @@ function buildTooltipOptions(title, unit, resolution) {
                 );
 
                 const parts = [
-                    `<span>${Highcharts.dateFormat("%e. %b %Y", this.x)}</span>`,
+                    `<span>${Highcharts.dateFormat("%e. %b %Y, %H:%M", this.x)}</span>`,
                 ];
 
                 if (averagePoint) {
