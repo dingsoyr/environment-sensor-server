@@ -29,6 +29,7 @@ def ingest_measurement_upload(
             """
             INSERT INTO devices (
                 device_id,
+                device_name,
                 firmware_version,
                 config_version,
                 reported_config_version,
@@ -37,7 +38,7 @@ def ingest_measurement_upload(
                 battery_voltage,
                 battery_percent
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(device_id) DO UPDATE SET
                 firmware_version = excluded.firmware_version,
                 reported_config_version = excluded.reported_config_version,
@@ -47,6 +48,7 @@ def ingest_measurement_upload(
                 battery_percent = excluded.battery_percent
             """,
             (
+                request.device_id,
                 request.device_id,
                 request.firmware_version,
                 request.config_version,

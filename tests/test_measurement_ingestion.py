@@ -92,7 +92,7 @@ def test_first_upload_creates_device_and_measurements(
 
     assert device_row == (
         "sensor-a",
-        None,
+        "sensor-a",
         "0.1.0",
         2,
         2,
