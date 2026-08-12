@@ -358,7 +358,7 @@ WHERE device_id = 'sensor-demo-001'
 GROUP BY device_id;
 ```
 
-The create script regenerates about 60 days of hourly history for the demo device and is designed for repeatable local dashboard development.
+The create script regenerates exactly 17,520 hourly measurements for the demo device, spanning approximately 730 days (about 2 years), and remains useful for current 24h / 7d / 30d dashboard views as well as future long-range history development.
 
 ## Project structure
 

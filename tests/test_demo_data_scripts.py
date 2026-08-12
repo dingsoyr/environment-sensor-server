@@ -7,6 +7,9 @@ from app.database import connect_database, initialize_database
 
 CREATE_SCRIPT_PATH = Path(__file__).resolve().parent.parent / "scripts" / "create_demo_data.sql"
 DELETE_SCRIPT_PATH = Path(__file__).resolve().parent.parent / "scripts" / "delete_demo_data.sql"
+EXPECTED_MEASUREMENT_COUNT = 730 * 24
+EXPECTED_TIMESTAMP_SPAN_SECONDS = (EXPECTED_MEASUREMENT_COUNT - 1) * 3600
+HALF_YEAR_HOURS = 24 * 182
 
 
 def run_sql_script(database_path: Path, script_path: Path) -> None:
@@ -96,6 +99,47 @@ def test_demo_data_scripts_create_rerun_and_cleanup(tmp_path: Path) -> None:
             WHERE device_id = 'sensor-demo-001'
             """
         ).fetchone()
+        hourly_spacing = connection.execute(
+            """
+            WITH ordered AS (
+                SELECT
+                    measured_at,
+                    LAG(measured_at) OVER (ORDER BY measured_at, sequence) AS previous_measured_at
+                FROM measurements
+                WHERE device_id = 'sensor-demo-001'
+            )
+            SELECT MIN(measured_at - previous_measured_at), MAX(measured_at - previous_measured_at)
+            FROM ordered
+            WHERE previous_measured_at IS NOT NULL
+            """
+        ).fetchone()
+        seasonal_temperature_windows = connection.execute(
+            """
+            WITH ordered AS (
+                SELECT
+                    sequence,
+                    temperature_c,
+                    ROW_NUMBER() OVER (ORDER BY measured_at, sequence) AS row_number
+                FROM measurements
+                WHERE device_id = 'sensor-demo-001'
+            )
+            SELECT
+                AVG(CASE WHEN row_number BETWEEN 1 AND ? THEN temperature_c END),
+                AVG(CASE WHEN row_number BETWEEN ? AND ? THEN temperature_c END),
+                AVG(CASE WHEN row_number BETWEEN ? AND ? THEN temperature_c END),
+                AVG(CASE WHEN row_number BETWEEN ? AND ? THEN temperature_c END)
+            FROM ordered
+            """,
+            (
+                HALF_YEAR_HOURS,
+                HALF_YEAR_HOURS + 1,
+                HALF_YEAR_HOURS * 2,
+                HALF_YEAR_HOURS * 2 + 1,
+                HALF_YEAR_HOURS * 3,
+                HALF_YEAR_HOURS * 3 + 1,
+                HALF_YEAR_HOURS * 4,
+            ),
+        ).fetchone()
 
     assert demo_device is not None
     assert demo_device[0] == "sensor-demo-001"
@@ -110,17 +154,32 @@ def test_demo_data_scripts_create_rerun_and_cleanup(tmp_path: Path) -> None:
     assert demo_device[9] == 96
 
     assert measurement_stats is not None
-    assert measurement_stats[0] == 1440
-    assert measurement_stats[1] == 1440
+    assert measurement_stats[0] == EXPECTED_MEASUREMENT_COUNT
+    assert measurement_stats[1] == EXPECTED_MEASUREMENT_COUNT
     assert measurement_stats[2] == 1
-    assert measurement_stats[3] == 1440
-    assert measurement_stats[5] - measurement_stats[4] == 5_180_400
+    assert measurement_stats[3] == EXPECTED_MEASUREMENT_COUNT
+    assert measurement_stats[5] - measurement_stats[4] == EXPECTED_TIMESTAMP_SPAN_SECONDS
     assert measurement_stats[6] == 1
     assert measurement_stats[7] == 1
     assert measurement_stats[8] < measurement_stats[9]
     assert measurement_stats[10] < measurement_stats[11]
     assert measurement_stats[12] < measurement_stats[13]
     assert demo_device[6] == measurement_stats[5]
+    assert hourly_spacing == (3600, 3600)
+
+    assert seasonal_temperature_windows is not None
+    first_half_year_average = seasonal_temperature_windows[0]
+    second_half_year_average = seasonal_temperature_windows[1]
+    third_half_year_average = seasonal_temperature_windows[2]
+    fourth_half_year_average = seasonal_temperature_windows[3]
+
+    assert first_half_year_average is not None
+    assert second_half_year_average is not None
+    assert third_half_year_average is not None
+    assert fourth_half_year_average is not None
+    assert abs(first_half_year_average - second_half_year_average) > 1.0
+    assert abs(second_half_year_average - third_half_year_average) > 1.0
+    assert abs(third_half_year_average - fourth_half_year_average) > 1.0
 
     run_sql_script(database_path, CREATE_SCRIPT_PATH)
 
@@ -140,7 +199,12 @@ def test_demo_data_scripts_create_rerun_and_cleanup(tmp_path: Path) -> None:
             "SELECT COUNT(*) FROM devices WHERE device_id = 'sensor-real-001'"
         ).fetchone()[0]
 
-    assert rerun_measurement_stats == (1440, 1440, 1, 1440)
+    assert rerun_measurement_stats == (
+        EXPECTED_MEASUREMENT_COUNT,
+        EXPECTED_MEASUREMENT_COUNT,
+        1,
+        EXPECTED_MEASUREMENT_COUNT,
+    )
     assert unrelated_before_cleanup == 1
 
     run_sql_script(database_path, DELETE_SCRIPT_PATH)

@@ -51,7 +51,8 @@ WITH RECURSIVE
         SELECT
             'sensor-demo-001' AS device_id,
             CAST(strftime('%s', 'now') AS INTEGER) / 3600 * 3600 AS latest_hour,
-            1440 AS total_points,
+            17520 AS total_points,
+            24 * 365.0 AS seasonal_cycle_hours,
             6.283185307179586 AS tau
     ),
     hours(hour_index) AS (
@@ -78,14 +79,14 @@ SELECT
     ROUND(
         19.5
         + 5.2 * sin(parameters.tau * (hours.hour_index % 24) / 24.0)
-        + 2.6 * sin(parameters.tau * hours.hour_index / parameters.total_points)
+        + 4.1 * sin(parameters.tau * hours.hour_index / parameters.seasonal_cycle_hours)
         + 0.4 * sin(parameters.tau * hours.hour_index / 168.0),
         2
     ),
     ROUND(
         61.0
         - 8.5 * sin(parameters.tau * (hours.hour_index % 24) / 24.0)
-        - 3.0 * sin(parameters.tau * hours.hour_index / parameters.total_points)
+        - 3.2 * sin(parameters.tau * hours.hour_index / parameters.seasonal_cycle_hours)
         + 1.8 * sin(parameters.tau * hours.hour_index / 96.0),
         2
     ),
