@@ -1,7 +1,16 @@
 import sqlite3
+from dataclasses import asdict
 from pathlib import Path
 
-from app.database import connect_database, initialize_database, list_dashboard_sensors
+from app.database import (
+    connect_database,
+    initialize_database,
+    list_dashboard_sensor_history_by_day,
+    list_dashboard_sensors,
+)
+
+
+UTC_DAY_SECONDS = 24 * 60 * 60
 
 
 def insert_device(database_path: Path, device_id: str) -> None:
@@ -28,6 +37,43 @@ def insert_measurement(database_path: Path, device_id: str, sequence: int) -> No
             VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (device_id, sequence, 1_786_300_052, 1, 19.01, 53.49, 990.79),
+        )
+
+
+def insert_history_measurement(
+    database_path: Path,
+    *,
+    device_id: str,
+    sequence: int,
+    measured_at: int,
+    timestamp_valid: bool,
+    temperature_c: float,
+    humidity_percent: float,
+    pressure_hpa: float,
+) -> None:
+    with connect_database(database_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO measurements (
+                device_id,
+                sequence,
+                measured_at,
+                timestamp_valid,
+                temperature_c,
+                humidity_percent,
+                pressure_hpa
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                device_id,
+                sequence,
+                measured_at,
+                int(timestamp_valid),
+                temperature_c,
+                humidity_percent,
+                pressure_hpa,
+            ),
         )
 
 
@@ -263,3 +309,102 @@ def test_list_dashboard_sensors_returns_null_latest_measurement_for_device_witho
     assert len(sensors) == 1
     assert sensors[0].config_sync_state == "waiting_for_sensor"
     assert sensors[0].latest_measurement is None
+
+
+def test_list_dashboard_sensor_history_by_day_aggregates_by_utc_day_and_respects_half_open_range(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "environment.db"
+    initialize_database(database_path)
+    insert_device(database_path, "sensor-a")
+
+    day_zero = 1_704_067_200
+    history_from = day_zero + (12 * 60 * 60)
+    history_to = day_zero + (31 * UTC_DAY_SECONDS) + 1
+
+    insert_history_measurement(
+        database_path,
+        device_id="sensor-a",
+        sequence=1,
+        measured_at=day_zero + (11 * 60 * 60),
+        timestamp_valid=True,
+        temperature_c=1.0,
+        humidity_percent=10.0,
+        pressure_hpa=1000.0,
+    )
+    insert_history_measurement(
+        database_path,
+        device_id="sensor-a",
+        sequence=2,
+        measured_at=history_from,
+        timestamp_valid=True,
+        temperature_c=10.0,
+        humidity_percent=20.0,
+        pressure_hpa=1001.0,
+    )
+    insert_history_measurement(
+        database_path,
+        device_id="sensor-a",
+        sequence=3,
+        measured_at=day_zero + (2 * UTC_DAY_SECONDS) + (1 * 60 * 60),
+        timestamp_valid=False,
+        temperature_c=30.0,
+        humidity_percent=40.0,
+        pressure_hpa=1003.0,
+    )
+    insert_history_measurement(
+        database_path,
+        device_id="sensor-a",
+        sequence=4,
+        measured_at=day_zero + (2 * UTC_DAY_SECONDS) + (23 * 60 * 60),
+        timestamp_valid=True,
+        temperature_c=50.0,
+        humidity_percent=60.0,
+        pressure_hpa=1005.0,
+    )
+    insert_history_measurement(
+        database_path,
+        device_id="sensor-a",
+        sequence=5,
+        measured_at=history_to,
+        timestamp_valid=True,
+        temperature_c=99.0,
+        humidity_percent=99.0,
+        pressure_hpa=1099.0,
+    )
+
+    points = list_dashboard_sensor_history_by_day(
+        "sensor-a",
+        measured_from=history_from,
+        measured_to=history_to,
+        database_path=database_path,
+    )
+
+    assert [asdict(point) for point in points] == [
+        {
+            "period_start": day_zero,
+            "sample_count": 1,
+            "temperature_min_c": 10.0,
+            "temperature_avg_c": 10.0,
+            "temperature_max_c": 10.0,
+            "humidity_min_percent": 20.0,
+            "humidity_avg_percent": 20.0,
+            "humidity_max_percent": 20.0,
+            "pressure_min_hpa": 1001.0,
+            "pressure_avg_hpa": 1001.0,
+            "pressure_max_hpa": 1001.0,
+        },
+        {
+            "period_start": day_zero + (2 * UTC_DAY_SECONDS),
+            "sample_count": 2,
+            "temperature_min_c": 30.0,
+            "temperature_avg_c": 40.0,
+            "temperature_max_c": 50.0,
+            "humidity_min_percent": 40.0,
+            "humidity_avg_percent": 50.0,
+            "humidity_max_percent": 60.0,
+            "pressure_min_hpa": 1003.0,
+            "pressure_avg_hpa": 1004.0,
+            "pressure_max_hpa": 1005.0,
+        },
+    ]

@@ -9,6 +9,9 @@ from app.database import connect_database
 from app.main import create_app
 
 
+UTC_DAY_SECONDS = 24 * 60 * 60
+
+
 def create_client(database_path: Path, monkeypatch, *, now: int) -> TestClient:
     monkeypatch.setattr("app.main.time.time", lambda: now)
     app = create_app(database_path)
@@ -149,6 +152,7 @@ def test_dashboard_sensor_history_24h_returns_windowed_points_in_order(
     assert response.status_code == 200
     assert response.json() == {
         "device_id": "sensor-a",
+        "resolution": "raw",
         "period": "24h",
         "from": now - 86_400,
         "to": now,
@@ -214,6 +218,7 @@ def test_dashboard_sensor_history_returns_empty_points_for_known_device_without_
     assert response.status_code == 200
     assert response.json() == {
         "device_id": "sensor-a",
+        "resolution": "raw",
         "period": "24h",
         "from": now - 86_400,
         "to": now,
@@ -234,7 +239,10 @@ def test_dashboard_sensor_history_returns_not_found_for_unknown_device(
     assert response.json() == {"detail": "Not Found"}
 
 
-def test_dashboard_sensor_history_requires_period(tmp_path: Path, monkeypatch) -> None:
+def test_dashboard_sensor_history_requires_period_or_explicit_range(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
     database_path = tmp_path / "environment.db"
 
     with create_client(database_path, monkeypatch, now=2_000_000) as client:
@@ -291,8 +299,327 @@ def test_dashboard_sensor_history_period_mappings(
     assert response.status_code == 200
     assert response.json() == {
         "device_id": "sensor-a",
+        "resolution": "raw",
         "period": period,
         "from": now - expected_span,
         "to": now,
         "points": [],
     }
+
+
+def test_dashboard_sensor_history_explicit_range_shorter_than_30_days_returns_raw_points(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_path = tmp_path / "environment.db"
+
+    with create_client(database_path, monkeypatch, now=2_000_000) as client:
+        insert_device(database_path, device_id="sensor-a")
+        insert_measurement(
+            database_path,
+            device_id="sensor-a",
+            sequence=10,
+            measured_at=1_000,
+            timestamp_valid=True,
+            temperature_c=21.5,
+            humidity_percent=48.0,
+            pressure_hpa=1005.5,
+        )
+        insert_measurement(
+            database_path,
+            device_id="sensor-a",
+            sequence=11,
+            measured_at=2_000,
+            timestamp_valid=False,
+            temperature_c=22.5,
+            humidity_percent=49.0,
+            pressure_hpa=1006.5,
+        )
+
+        response = client.get("/api/dashboard/sensors/sensor-a/history?from=1000&to=2001")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "device_id": "sensor-a",
+        "resolution": "raw",
+        "from": 1_000,
+        "to": 2_001,
+        "points": [
+            {
+                "sequence": 10,
+                "measured_at": 1_000,
+                "timestamp_valid": True,
+                "temperature_c": 21.5,
+                "humidity_percent": 48.0,
+                "pressure_hpa": 1005.5,
+            },
+            {
+                "sequence": 11,
+                "measured_at": 2_000,
+                "timestamp_valid": False,
+                "temperature_c": 22.5,
+                "humidity_percent": 49.0,
+                "pressure_hpa": 1006.5,
+            },
+        ],
+    }
+
+
+def test_dashboard_sensor_history_explicit_range_exactly_30_days_returns_raw_resolution(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_path = tmp_path / "environment.db"
+    range_start = 1_700_000_000
+    range_end = range_start + (30 * UTC_DAY_SECONDS)
+
+    with create_client(database_path, monkeypatch, now=2_000_000) as client:
+        insert_device(database_path, device_id="sensor-a")
+
+        response = client.get(
+            f"/api/dashboard/sensors/sensor-a/history?from={range_start}&to={range_end}"
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "device_id": "sensor-a",
+        "resolution": "raw",
+        "from": range_start,
+        "to": range_end,
+        "points": [],
+    }
+
+
+def test_dashboard_sensor_history_explicit_range_greater_than_30_days_returns_daily_aggregates(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_path = tmp_path / "environment.db"
+    day_zero = 1_704_067_200
+    history_from = day_zero + (12 * 60 * 60)
+    history_to = day_zero + (32 * UTC_DAY_SECONDS) + (6 * 60 * 60)
+
+    with create_client(database_path, monkeypatch, now=2_000_000) as client:
+        insert_device(database_path, device_id="sensor-a")
+        insert_measurement(
+            database_path,
+            device_id="sensor-a",
+            sequence=1,
+            measured_at=day_zero + (11 * 60 * 60),
+            timestamp_valid=True,
+            temperature_c=5.0,
+            humidity_percent=35.0,
+            pressure_hpa=995.0,
+        )
+        insert_measurement(
+            database_path,
+            device_id="sensor-a",
+            sequence=2,
+            measured_at=history_from,
+            timestamp_valid=True,
+            temperature_c=10.0,
+            humidity_percent=40.0,
+            pressure_hpa=1000.0,
+        )
+        insert_measurement(
+            database_path,
+            device_id="sensor-a",
+            sequence=3,
+            measured_at=day_zero + (23 * 60 * 60),
+            timestamp_valid=True,
+            temperature_c=20.0,
+            humidity_percent=50.0,
+            pressure_hpa=1010.0,
+        )
+        insert_measurement(
+            database_path,
+            device_id="sensor-a",
+            sequence=4,
+            measured_at=day_zero + UTC_DAY_SECONDS + (5 * 60 * 60),
+            timestamp_valid=True,
+            temperature_c=30.0,
+            humidity_percent=60.0,
+            pressure_hpa=1020.0,
+        )
+        insert_measurement(
+            database_path,
+            device_id="sensor-a",
+            sequence=5,
+            measured_at=day_zero + UTC_DAY_SECONDS + (18 * 60 * 60),
+            timestamp_valid=False,
+            temperature_c=40.0,
+            humidity_percent=70.0,
+            pressure_hpa=1030.0,
+        )
+        insert_measurement(
+            database_path,
+            device_id="sensor-a",
+            sequence=6,
+            measured_at=day_zero + (3 * UTC_DAY_SECONDS) + (2 * 60 * 60),
+            timestamp_valid=True,
+            temperature_c=50.0,
+            humidity_percent=80.0,
+            pressure_hpa=1040.0,
+        )
+        insert_measurement(
+            database_path,
+            device_id="sensor-a",
+            sequence=7,
+            measured_at=day_zero + (31 * UTC_DAY_SECONDS) + (5 * 60 * 60),
+            timestamp_valid=True,
+            temperature_c=60.0,
+            humidity_percent=90.0,
+            pressure_hpa=1050.0,
+        )
+        insert_measurement(
+            database_path,
+            device_id="sensor-a",
+            sequence=8,
+            measured_at=history_to,
+            timestamp_valid=True,
+            temperature_c=70.0,
+            humidity_percent=95.0,
+            pressure_hpa=1060.0,
+        )
+
+        response = client.get(
+            f"/api/dashboard/sensors/sensor-a/history?from={history_from}&to={history_to}"
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "device_id": "sensor-a",
+        "resolution": "day",
+        "from": history_from,
+        "to": history_to,
+        "points": [
+            {
+                "period_start": day_zero,
+                "sample_count": 2,
+                "temperature_min_c": 10.0,
+                "temperature_avg_c": 15.0,
+                "temperature_max_c": 20.0,
+                "humidity_min_percent": 40.0,
+                "humidity_avg_percent": 45.0,
+                "humidity_max_percent": 50.0,
+                "pressure_min_hpa": 1000.0,
+                "pressure_avg_hpa": 1005.0,
+                "pressure_max_hpa": 1010.0,
+            },
+            {
+                "period_start": day_zero + UTC_DAY_SECONDS,
+                "sample_count": 2,
+                "temperature_min_c": 30.0,
+                "temperature_avg_c": 35.0,
+                "temperature_max_c": 40.0,
+                "humidity_min_percent": 60.0,
+                "humidity_avg_percent": 65.0,
+                "humidity_max_percent": 70.0,
+                "pressure_min_hpa": 1020.0,
+                "pressure_avg_hpa": 1025.0,
+                "pressure_max_hpa": 1030.0,
+            },
+            {
+                "period_start": day_zero + (3 * UTC_DAY_SECONDS),
+                "sample_count": 1,
+                "temperature_min_c": 50.0,
+                "temperature_avg_c": 50.0,
+                "temperature_max_c": 50.0,
+                "humidity_min_percent": 80.0,
+                "humidity_avg_percent": 80.0,
+                "humidity_max_percent": 80.0,
+                "pressure_min_hpa": 1040.0,
+                "pressure_avg_hpa": 1040.0,
+                "pressure_max_hpa": 1040.0,
+            },
+            {
+                "period_start": day_zero + (31 * UTC_DAY_SECONDS),
+                "sample_count": 1,
+                "temperature_min_c": 60.0,
+                "temperature_avg_c": 60.0,
+                "temperature_max_c": 60.0,
+                "humidity_min_percent": 90.0,
+                "humidity_avg_percent": 90.0,
+                "humidity_max_percent": 90.0,
+                "pressure_min_hpa": 1050.0,
+                "pressure_avg_hpa": 1050.0,
+                "pressure_max_hpa": 1050.0,
+            },
+        ],
+    }
+
+
+def test_dashboard_sensor_history_explicit_range_returns_empty_points_when_no_measurements_match(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_path = tmp_path / "environment.db"
+    history_from = 1_700_000_000
+    history_to = history_from + (31 * UTC_DAY_SECONDS)
+
+    with create_client(database_path, monkeypatch, now=2_000_000) as client:
+        insert_device(database_path, device_id="sensor-a")
+
+        response = client.get(
+            f"/api/dashboard/sensors/sensor-a/history?from={history_from}&to={history_to}"
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "device_id": "sensor-a",
+        "resolution": "day",
+        "from": history_from,
+        "to": history_to,
+        "points": [],
+    }
+
+
+def test_dashboard_sensor_history_rejects_period_and_explicit_range_together(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_path = tmp_path / "environment.db"
+
+    with create_client(database_path, monkeypatch, now=2_000_000) as client:
+        insert_device(database_path, device_id="sensor-a")
+        response = client.get(
+            "/api/dashboard/sensors/sensor-a/history?period=24h&from=100&to=200"
+        )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("query", ["from=100", "to=200"])
+def test_dashboard_sensor_history_rejects_incomplete_explicit_range(
+    tmp_path: Path,
+    monkeypatch,
+    query: str,
+) -> None:
+    database_path = tmp_path / "environment.db"
+
+    with create_client(database_path, monkeypatch, now=2_000_000) as client:
+        insert_device(database_path, device_id="sensor-a")
+        response = client.get(f"/api/dashboard/sensors/sensor-a/history?{query}")
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("history_from", "history_to"),
+    [(200, 200), (300, 200)],
+)
+def test_dashboard_sensor_history_rejects_non_increasing_explicit_range(
+    tmp_path: Path,
+    monkeypatch,
+    history_from: int,
+    history_to: int,
+) -> None:
+    database_path = tmp_path / "environment.db"
+
+    with create_client(database_path, monkeypatch, now=2_000_000) as client:
+        insert_device(database_path, device_id="sensor-a")
+        response = client.get(
+            f"/api/dashboard/sensors/sensor-a/history?from={history_from}&to={history_to}"
+        )
+
+    assert response.status_code == 422

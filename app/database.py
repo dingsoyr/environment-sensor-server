@@ -55,6 +55,21 @@ class DashboardSensorHistoryPointRecord:
 
 
 @dataclass(frozen=True)
+class DashboardSensorHistoryDayPointRecord:
+    period_start: int
+    sample_count: int
+    temperature_min_c: float
+    temperature_avg_c: float
+    temperature_max_c: float
+    humidity_min_percent: float
+    humidity_avg_percent: float
+    humidity_max_percent: float
+    pressure_min_hpa: float
+    pressure_avg_hpa: float
+    pressure_max_hpa: float
+
+
+@dataclass(frozen=True)
 class DashboardSensorConfigurationStateRecord:
     device_id: str
     device_name: str | None
@@ -306,6 +321,55 @@ def list_dashboard_sensor_history(
             temperature_c=row[3],
             humidity_percent=row[4],
             pressure_hpa=row[5],
+        )
+        for row in rows
+    ]
+
+
+def list_dashboard_sensor_history_by_day(
+    device_id: str,
+    measured_from: int,
+    measured_to: int,
+    database_path: str | Path | None = None,
+) -> list[DashboardSensorHistoryDayPointRecord]:
+    with connect_database(database_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT
+                CAST(strftime('%s', datetime(measured_at, 'unixepoch', 'start of day')) AS INTEGER) AS period_start,
+                COUNT(*) AS sample_count,
+                MIN(temperature_c) AS temperature_min_c,
+                AVG(temperature_c) AS temperature_avg_c,
+                MAX(temperature_c) AS temperature_max_c,
+                MIN(humidity_percent) AS humidity_min_percent,
+                AVG(humidity_percent) AS humidity_avg_percent,
+                MAX(humidity_percent) AS humidity_max_percent,
+                MIN(pressure_hpa) AS pressure_min_hpa,
+                AVG(pressure_hpa) AS pressure_avg_hpa,
+                MAX(pressure_hpa) AS pressure_max_hpa
+            FROM measurements
+            WHERE device_id = ?
+              AND measured_at >= ?
+              AND measured_at < ?
+            GROUP BY period_start
+            ORDER BY period_start ASC
+            """,
+            (device_id, measured_from, measured_to),
+        ).fetchall()
+
+    return [
+        DashboardSensorHistoryDayPointRecord(
+            period_start=row[0],
+            sample_count=row[1],
+            temperature_min_c=row[2],
+            temperature_avg_c=row[3],
+            temperature_max_c=row[4],
+            humidity_min_percent=row[5],
+            humidity_avg_percent=row[6],
+            humidity_max_percent=row[7],
+            pressure_min_hpa=row[8],
+            pressure_avg_hpa=row[9],
+            pressure_max_hpa=row[10],
         )
         for row in rows
     ]

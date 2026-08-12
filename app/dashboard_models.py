@@ -61,14 +61,43 @@ class DashboardSensorHistoryPoint(BaseModel):
     pressure_hpa: float
 
 
-class DashboardSensorHistoryResponse(BaseModel):
+class DashboardSensorHistoryDayPoint(BaseModel):
+    period_start: int
+    sample_count: int
+    temperature_min_c: float
+    temperature_avg_c: float
+    temperature_max_c: float
+    humidity_min_percent: float
+    humidity_avg_percent: float
+    humidity_max_percent: float
+    pressure_min_hpa: float
+    pressure_avg_hpa: float
+    pressure_max_hpa: float
+
+
+class DashboardSensorHistoryRawResponse(BaseModel):
     device_id: str
-    period: Literal["24h", "7d", "30d"]
+    resolution: Literal["raw"]
+    period: Literal["24h", "7d", "30d"] | None = None
     from_: int = Field(alias="from")
     to: int
     points: list[DashboardSensorHistoryPoint]
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class DashboardSensorHistoryDayResponse(BaseModel):
+    device_id: str
+    resolution: Literal["day"]
+    period: None = None
+    from_: int = Field(alias="from")
+    to: int
+    points: list[DashboardSensorHistoryDayPoint]
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+DashboardSensorHistoryResponse = DashboardSensorHistoryRawResponse | DashboardSensorHistoryDayResponse
 
 
 class DashboardSensorConfigurationPatchRequest(BaseModel):

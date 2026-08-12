@@ -258,6 +258,57 @@ The current suite may emit an existing upstream FastAPI/Starlette TestClient dep
 
 The version 1 sensor API is documented in:
 
+`docs/api-v1.md`
+
+## Dashboard history API
+
+The dashboard history endpoint is:
+
+```text
+GET /api/dashboard/sensors/{device_id}/history
+```
+
+The request must use exactly one query mode:
+
+- `period=24h|7d|30d`
+- `from=<unix>&to=<unix>`
+
+The two modes are mutually exclusive. The endpoint returns `422` for ambiguous or incomplete combinations such as:
+
+- `period` together with `from` or `to`
+- `from` without `to`
+- `to` without `from`
+- `from >= to`
+
+All timestamps use Unix time in UTC. Range filters use half-open interval semantics:
+
+```text
+[from, to)
+```
+
+meaning `measured_at >= from` and `measured_at < to`.
+
+Response payloads include a `resolution` field describing the returned point type:
+
+- `resolution="raw"` for raw measurements
+- `resolution="day"` for UTC daily aggregates
+
+Resolution rules:
+
+- `period=24h`, `period=7d`, and `period=30d` always return raw measurements
+- explicit `from`/`to` ranges of `30 * 24 * 60 * 60` seconds or less return raw measurements
+- explicit `from`/`to` ranges longer than that return daily aggregates
+
+Daily aggregation uses UTC calendar-day buckets without expanding the requested interval to whole days. Each day point includes:
+
+- `period_start`
+- `sample_count`
+- `temperature_min_c`, `temperature_avg_c`, `temperature_max_c`
+- `humidity_min_percent`, `humidity_avg_percent`, `humidity_max_percent`
+- `pressure_min_hpa`, `pressure_avg_hpa`, `pressure_max_hpa`
+
+Days with no measurements are omitted.
+
 ```text
 docs/api-v1.md
 ```

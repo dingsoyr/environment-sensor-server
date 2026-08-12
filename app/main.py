@@ -23,7 +23,10 @@ from app.dashboard_models import (
     DashboardSensorConfigurationPatchResponse,
     DashboardSensorConfiguration,
     DashboardSensorDetail,
+    DashboardSensorHistoryDayPoint,
+    DashboardSensorHistoryDayResponse,
     DashboardSensorHistoryPoint,
+    DashboardSensorHistoryRawResponse,
     DashboardSensorHistoryResponse,
     DashboardSensor,
     DashboardSensorsResponse,
@@ -34,6 +37,7 @@ from app.database import (
     get_device_configuration,
     initialize_database,
     list_dashboard_sensor_history,
+    list_dashboard_sensor_history_by_day,
     list_dashboard_sensors,
     UNSET,
     update_dashboard_sensor_configuration,
@@ -48,6 +52,7 @@ PERIOD_SECONDS: dict[HistoryPeriod, int] = {
     "7d": 7 * 24 * 60 * 60,
     "30d": 30 * 24 * 60 * 60,
 }
+RAW_HISTORY_RANGE_LIMIT_SECONDS = 30 * 24 * 60 * 60
 
 APP_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = APP_DIR / "templates"
@@ -57,6 +62,57 @@ STATIC_DIR = APP_DIR / "static"
 def calculate_history_window(period: HistoryPeriod, now: int | None = None) -> tuple[int, int]:
     current_time = int(time.time()) if now is None else now
     return current_time - PERIOD_SECONDS[period], current_time
+
+
+def resolve_history_request(
+    *,
+    period: HistoryPeriod | None,
+    measured_from: int | None,
+    measured_to: int | None,
+) -> tuple[HistoryPeriod | None, int, int]:
+    has_period = period is not None
+    has_from = measured_from is not None
+    has_to = measured_to is not None
+
+    if has_period:
+        if has_from or has_to:
+            raise HTTPException(
+                status_code=422,
+                detail="Specify either period or from/to, not both",
+            )
+
+        history_from, history_to = calculate_history_window(period)
+        return period, history_from, history_to
+
+    if has_from != has_to:
+        raise HTTPException(
+            status_code=422,
+            detail="Both from and to must be provided together",
+        )
+
+    if not has_from:
+        raise HTTPException(
+            status_code=422,
+            detail="Specify either period or from/to",
+        )
+
+    assert measured_from is not None
+    assert measured_to is not None
+
+    if measured_from >= measured_to:
+        raise HTTPException(
+            status_code=422,
+            detail="from must be less than to",
+        )
+
+    return None, measured_from, measured_to
+
+
+def should_return_raw_history(*, period: HistoryPeriod | None, history_from: int, history_to: int) -> bool:
+    if period is not None:
+        return True
+
+    return history_to - history_from <= RAW_HISTORY_RANGE_LIMIT_SECONDS
 
 
 @asynccontextmanager
@@ -226,40 +282,85 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         "/api/dashboard/sensors/{device_id}/history",
         response_model=DashboardSensorHistoryResponse,
         response_model_by_alias=True,
+        response_model_exclude_none=True,
     )
     def get_dashboard_sensor_history(
         device_id: str,
         request: Request,
-        period: HistoryPeriod = Query(...),
+        period: HistoryPeriod | None = Query(default=None),
+        measured_from: int | None = Query(default=None, alias="from"),
+        measured_to: int | None = Query(default=None, alias="to"),
     ) -> DashboardSensorHistoryResponse:
-        history_from, history_to = calculate_history_window(period)
+        selected_period, history_from, history_to = resolve_history_request(
+            period=period,
+            measured_from=measured_from,
+            measured_to=measured_to,
+        )
+        use_raw_history = should_return_raw_history(
+            period=selected_period,
+            history_from=history_from,
+            history_to=history_to,
+        )
 
         try:
             if not device_exists(device_id, database_path=request.app.state.database_path):
                 raise HTTPException(status_code=404, detail="Not Found")
 
-            point_records = list_dashboard_sensor_history(
-                device_id,
-                measured_from=history_from,
-                measured_to=history_to,
-                database_path=request.app.state.database_path,
-            )
+            if use_raw_history:
+                point_records = list_dashboard_sensor_history(
+                    device_id,
+                    measured_from=history_from,
+                    measured_to=history_to,
+                    database_path=request.app.state.database_path,
+                )
+            else:
+                point_records = list_dashboard_sensor_history_by_day(
+                    device_id,
+                    measured_from=history_from,
+                    measured_to=history_to,
+                    database_path=request.app.state.database_path,
+                )
         except sqlite3.DatabaseError as error:
             raise HTTPException(status_code=500, detail="Internal Server Error") from error
 
-        return DashboardSensorHistoryResponse(
+        if use_raw_history:
+            return DashboardSensorHistoryRawResponse(
+                device_id=device_id,
+                resolution="raw",
+                period=selected_period,
+                from_=history_from,
+                to=history_to,
+                points=[
+                    DashboardSensorHistoryPoint(
+                        sequence=point_record.sequence,
+                        measured_at=point_record.measured_at,
+                        timestamp_valid=point_record.timestamp_valid,
+                        temperature_c=point_record.temperature_c,
+                        humidity_percent=point_record.humidity_percent,
+                        pressure_hpa=point_record.pressure_hpa,
+                    )
+                    for point_record in point_records
+                ],
+            )
+
+        return DashboardSensorHistoryDayResponse(
             device_id=device_id,
-            period=period,
+            resolution="day",
             from_=history_from,
             to=history_to,
             points=[
-                DashboardSensorHistoryPoint(
-                    sequence=point_record.sequence,
-                    measured_at=point_record.measured_at,
-                    timestamp_valid=point_record.timestamp_valid,
-                    temperature_c=point_record.temperature_c,
-                    humidity_percent=point_record.humidity_percent,
-                    pressure_hpa=point_record.pressure_hpa,
+                DashboardSensorHistoryDayPoint(
+                    period_start=point_record.period_start,
+                    sample_count=point_record.sample_count,
+                    temperature_min_c=point_record.temperature_min_c,
+                    temperature_avg_c=point_record.temperature_avg_c,
+                    temperature_max_c=point_record.temperature_max_c,
+                    humidity_min_percent=point_record.humidity_min_percent,
+                    humidity_avg_percent=point_record.humidity_avg_percent,
+                    humidity_max_percent=point_record.humidity_max_percent,
+                    pressure_min_hpa=point_record.pressure_min_hpa,
+                    pressure_avg_hpa=point_record.pressure_avg_hpa,
+                    pressure_max_hpa=point_record.pressure_max_hpa,
                 )
                 for point_record in point_records
             ],
