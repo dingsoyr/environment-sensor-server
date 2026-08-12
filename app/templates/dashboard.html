@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="mb-4">
+    <h1 class="h2 mb-1">Sensorar</h1>
+    <p class="text-body-secondary mb-0">Oversikt over registrerte sensorar</p>
+</section>
+
+<section aria-live="polite" aria-busy="true">
+    <div id="dashboard-status" class="mb-3">
+        <div class="d-inline-flex align-items-center gap-2 text-body-secondary">
+            <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+            <span>Lastar sensorar...</span>
+        </div>
+    </div>
+    <div id="sensor-grid" class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-4"></div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', path='/js/dashboard.js') }}" defer></script>
+{% endblock %}

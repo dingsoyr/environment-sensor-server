@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 from app.api_v1_models import (
     DeviceConfiguration,
@@ -46,6 +49,10 @@ PERIOD_SECONDS: dict[HistoryPeriod, int] = {
     "30d": 30 * 24 * 60 * 60,
 }
 
+APP_DIR = Path(__file__).resolve().parent
+TEMPLATES_DIR = APP_DIR / "templates"
+STATIC_DIR = APP_DIR / "static"
+
 
 def calculate_history_window(period: HistoryPeriod, now: int | None = None) -> tuple[int, int]:
     current_time = int(time.time()) if now is None else now
@@ -61,6 +68,30 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app(database_path: str | Path | None = None) -> FastAPI:
     app = FastAPI(title="Environment Sensor Server", lifespan=lifespan)
     app.state.database_path = database_path
+    templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+    @app.get("/", response_class=HTMLResponse)
+    def dashboard_home(request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request,
+            "dashboard.html",
+            {
+                "page_title": "Sensorar",
+            },
+        )
+
+    @app.get("/sensors/{device_id}", response_class=HTMLResponse)
+    def dashboard_sensor_placeholder(device_id: str, request: Request) -> HTMLResponse:
+        return templates.TemplateResponse(
+            request,
+            "sensor_placeholder.html",
+            {
+                "page_title": "Sensor",
+                "device_id": device_id,
+            },
+        )
 
     @app.get("/health")
     def health() -> dict[str, str]:

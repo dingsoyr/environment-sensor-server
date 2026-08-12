@@ -1,0 +1,57 @@
+.sensor-card {
+    height: 100%;
+}
+
+.sensor-card .card-body {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.measurement-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.measurement-tile {
+    padding: 0.75rem;
+    border: 1px solid var(--bs-border-color);
+    border-radius: var(--bs-border-radius);
+    background-color: var(--bs-tertiary-bg);
+}
+
+.measurement-label {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--bs-secondary-color);
+}
+
+.measurement-value {
+    display: block;
+    font-size: 1.25rem;
+    font-weight: 600;
+}
+
+.sensor-meta {
+    margin: 0;
+}
+
+.sensor-meta dt {
+    font-size: 0.875rem;
+    color: var(--bs-secondary-color);
+}
+
+.sensor-meta dd {
+    margin-bottom: 0.75rem;
+}
+
+.sensor-card .card-footer {
+    background: transparent;
+}
+
+@media (max-width: 575.98px) {
+    .measurement-summary {
+        grid-template-columns: 1fr;
+    }
+}
