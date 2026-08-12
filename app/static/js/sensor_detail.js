@@ -28,10 +28,17 @@ const STATUS_BADGES = {
     device_ahead: { label: "Sensor framfor server", className: "text-bg-secondary" },
 };
 
+const CHART_COLORS = {
+    temperature: "#c4575a",
+    humidity: "#4d8a57",
+    pressure: "#7b62b3",
+};
+
 const CHARTS = {
     temperature: {
         containerId: "temperature-chart",
         title: "Temperatur",
+        color: CHART_COLORS.temperature,
         rawValueKey: "temperature_c",
         averageValueKey: "temperature_avg_c",
         minimumValueKey: "temperature_min_c",
@@ -41,6 +48,7 @@ const CHARTS = {
     humidity: {
         containerId: "humidity-chart",
         title: "Luftfukt",
+        color: CHART_COLORS.humidity,
         rawValueKey: "humidity_percent",
         averageValueKey: "humidity_avg_percent",
         minimumValueKey: "humidity_min_percent",
@@ -50,6 +58,7 @@ const CHARTS = {
     pressure: {
         containerId: "pressure-chart",
         title: "Lufttrykk",
+        color: CHART_COLORS.pressure,
         rawValueKey: "pressure_hpa",
         averageValueKey: "pressure_avg_hpa",
         minimumValueKey: "pressure_min_hpa",
@@ -489,6 +498,10 @@ function createAggregateRangeSeries(points, minimumKey, maximumKey) {
     ]);
 }
 
+function createChartRangeColor(color) {
+    return Highcharts.color(color).setOpacity(0.16).get();
+}
+
 function buildTooltipOptions(title, unit, resolution) {
     if (resolution === "day") {
         return {
@@ -582,6 +595,7 @@ function renderRawHistory(points) {
         [
             {
                 type: "line",
+                color: CHARTS.temperature.color,
                 data: createRawSeries(points, CHARTS.temperature.rawValueKey),
             },
         ],
@@ -594,6 +608,7 @@ function renderRawHistory(points) {
         [
             {
                 type: "line",
+                color: CHARTS.humidity.color,
                 data: createRawSeries(points, CHARTS.humidity.rawValueKey),
             },
         ],
@@ -606,6 +621,7 @@ function renderRawHistory(points) {
         [
             {
                 type: "line",
+                color: CHARTS.pressure.color,
                 data: createRawSeries(points, CHARTS.pressure.rawValueKey),
             },
         ],
@@ -620,12 +636,13 @@ function createAggregateSeries(chartConfig, points) {
         {
             type: "arearange",
             name: `${chartConfig.title} spenn`,
+            color: createChartRangeColor(chartConfig.color),
             data: createAggregateRangeSeries(
                 points,
                 chartConfig.minimumValueKey,
                 chartConfig.maximumValueKey,
             ),
-            fillOpacity: 0.12,
+            fillOpacity: 0.75,
             lineWidth: 0,
             marker: {
                 enabled: false,
@@ -638,6 +655,7 @@ function createAggregateSeries(chartConfig, points) {
         {
             type: "line",
             name: `${chartConfig.title} gjennomsnitt`,
+            color: chartConfig.color,
             data: createAggregateAverageSeries(points, chartConfig.averageValueKey),
             lineWidth: 2,
             marker: {

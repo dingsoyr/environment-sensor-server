@@ -107,6 +107,15 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert 'type: "arearange"' in detail_script_response.text
     assert 'payload.resolution === "day"' in detail_script_response.text
     assert 'Frå-datoen kan ikkje vere etter Til-datoen.' in detail_script_response.text
+    assert 'const CHART_COLORS = {' in detail_script_response.text
+    assert 'temperature: "#c4575a"' in detail_script_response.text
+    assert 'humidity: "#4d8a57"' in detail_script_response.text
+    assert 'pressure: "#7b62b3"' in detail_script_response.text
+    assert 'color: CHARTS.temperature.color' in detail_script_response.text
+    assert 'color: CHARTS.humidity.color' in detail_script_response.text
+    assert 'color: CHARTS.pressure.color' in detail_script_response.text
+    assert 'color: createChartRangeColor(chartConfig.color)' in detail_script_response.text
+    assert 'color: chartConfig.color' in detail_script_response.text
 
     assert css_response.status_code == 200
     assert ".measurement-value-unit" in css_response.text
