@@ -66,6 +66,7 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert helper_response.status_code == 200
     assert "okMinimumPercent: 50" in helper_response.text
     assert "lowMinimumPercent: 20" in helper_response.text
+    assert 'label: "Batteristatus ukjend"' in helper_response.text
     assert "bi-battery-full" in helper_response.text
     assert "bi-battery-half" in helper_response.text
     assert 'iconClass: "bi-battery"' in helper_response.text
@@ -73,12 +74,17 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert dashboard_script_response.status_code == 200
     assert "BatteryStatus" in dashboard_script_response.text
     assert "dataset.batteryStatus" in dashboard_script_response.text
+    assert "batteryStatus.getLabel(sensor.battery_percent)" in dashboard_script_response.text
+    assert 'appendMetaRow(metaList, "Batteri", createBatteryStatusContent(sensor));' in dashboard_script_response.text
+    assert "hasBatteryPercent(sensor) || hasBatteryVoltage(sensor)" not in dashboard_script_response.text
 
     assert detail_script_response.status_code == 200
     assert "BatteryStatus" in detail_script_response.text
     assert "battery-progress" in detail_script_response.text
     assert "progress-bar" in detail_script_response.text
     assert "aria-valuenow" in detail_script_response.text
+    assert "if (hasPercent) {" in detail_script_response.text
+    assert "batteryStatus.getLabel(detail.battery_percent)" in detail_script_response.text
 
     assert css_response.status_code == 200
     assert ".battery-status-row" in css_response.text

@@ -196,20 +196,10 @@ function appendBatterySeparator(container) {
 }
 
 function createBatteryStatusContent(detail) {
-    if (!hasBatteryPercent(detail)) {
-        if (!hasBatteryVoltage(detail)) {
-            return null;
-        }
-
-        const fallback = document.createElement("span");
-        fallback.className = "text-body-secondary";
-        fallback.textContent = formatBatteryVoltage(detail.battery_voltage);
-        return fallback;
-    }
-
     const status = batteryStatus.getStatus(detail.battery_percent);
     const semanticClass = batteryStatus.getSemanticClass(detail.battery_percent);
     const label = batteryStatus.getLabel(detail.battery_percent);
+    const hasPercent = hasBatteryPercent(detail);
     const safePercent = batteryStatus.clampPercent(detail.battery_percent);
 
     const wrapper = document.createElement("div");
@@ -225,36 +215,50 @@ function createBatteryStatusContent(detail) {
 
     const summaryText = document.createElement("span");
     summaryText.className = "battery-status-summary";
-    appendBatterySummaryPart(summaryText, `${detail.battery_percent} %`, "fw-semibold");
+
+    if (hasPercent) {
+        appendBatterySummaryPart(summaryText, `${detail.battery_percent} %`, "fw-semibold");
+    }
 
     const voltageText = formatBatteryVoltage(detail.battery_voltage);
     if (voltageText) {
-        appendBatterySeparator(summaryText);
+        if (hasPercent) {
+            appendBatterySeparator(summaryText);
+        }
         appendBatterySummaryPart(summaryText, voltageText, "text-body-secondary");
     }
 
-    appendBatterySeparator(summaryText);
-    appendBatterySummaryPart(summaryText, label, `fw-medium text-${semanticClass}`);
+    if (hasPercent || voltageText) {
+        appendBatterySeparator(summaryText);
+    }
+
+    appendBatterySummaryPart(
+        summaryText,
+        label,
+        hasPercent ? `fw-medium text-${semanticClass}` : "fw-medium text-body-secondary",
+    );
 
     summary.appendChild(icon);
     summary.appendChild(summaryText);
     wrapper.appendChild(summary);
 
-    const progress = document.createElement("div");
-    progress.className = "progress battery-progress";
+    if (hasPercent) {
+        const progress = document.createElement("div");
+        progress.className = "progress battery-progress";
 
-    const progressBar = document.createElement("div");
-    progressBar.className = `progress-bar bg-${semanticClass}`;
-    progressBar.role = "progressbar";
-    progressBar.style.width = `${safePercent}%`;
-    progressBar.setAttribute("aria-valuenow", String(safePercent));
-    progressBar.setAttribute("aria-valuemin", "0");
-    progressBar.setAttribute("aria-valuemax", "100");
-    progressBar.setAttribute("aria-label", `Batterinivå ${detail.battery_percent} %, ${label}`);
-    progressBar.textContent = `${detail.battery_percent} %`;
+        const progressBar = document.createElement("div");
+        progressBar.className = `progress-bar bg-${semanticClass}`;
+        progressBar.role = "progressbar";
+        progressBar.style.width = `${safePercent}%`;
+        progressBar.setAttribute("aria-valuenow", String(safePercent));
+        progressBar.setAttribute("aria-valuemin", "0");
+        progressBar.setAttribute("aria-valuemax", "100");
+        progressBar.setAttribute("aria-label", `Batterinivå ${detail.battery_percent} %, ${label}`);
+        progressBar.textContent = `${detail.battery_percent} %`;
 
-    progress.appendChild(progressBar);
-    wrapper.appendChild(progress);
+        progress.appendChild(progressBar);
+        wrapper.appendChild(progress);
+    }
 
     return wrapper;
 }
@@ -283,8 +287,10 @@ function renderStatusSection(detail) {
     appendMetaRow(statusList, "Firmware", detail.firmware_version || "Ukjend");
     appendMetaRow(statusList, "Device ID", detail.device_id);
 
-    const batteryContent = createBatteryStatusContent(detail);
-    if (batteryContent) {
+    if (hasBatteryPercent(detail) || hasBatteryVoltage(detail)) {
+        appendMetaRow(statusList, "Batteri", createBatteryStatusContent(detail));
+    } else {
+        const batteryContent = createBatteryStatusContent(detail);
         appendMetaRow(statusList, "Batteri", batteryContent);
     }
 

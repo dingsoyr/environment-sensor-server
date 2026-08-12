@@ -111,6 +111,7 @@ function appendMetaRow(list, label, value) {
 function createBatteryStatusContent(sensor) {
     const status = batteryStatus.getStatus(sensor.battery_percent);
     const semanticClass = batteryStatus.getSemanticClass(sensor.battery_percent);
+    const hasPercent = hasBatteryPercent(sensor);
     const wrapper = document.createElement("div");
     wrapper.className = "battery-status-block";
     wrapper.dataset.batteryStatus = status;
@@ -125,21 +126,24 @@ function createBatteryStatusContent(sensor) {
     const text = document.createElement("span");
     text.className = "battery-status-summary";
 
-    const percent = document.createElement("span");
-    percent.className = "fw-semibold";
-    percent.textContent = `${sensor.battery_percent} %`;
-
-    const separator = document.createElement("span");
-    separator.className = "text-body-secondary";
-    separator.setAttribute("aria-hidden", "true");
-    separator.textContent = "·";
-
     const label = document.createElement("span");
-    label.className = `fw-medium text-${semanticClass}`;
+    label.className = hasPercent ? `fw-medium text-${semanticClass}` : "fw-medium text-body-secondary";
     label.textContent = batteryStatus.getLabel(sensor.battery_percent);
 
-    text.appendChild(percent);
-    text.appendChild(separator);
+    if (hasPercent) {
+        const percent = document.createElement("span");
+        percent.className = "fw-semibold";
+        percent.textContent = `${sensor.battery_percent} %`;
+
+        const separator = document.createElement("span");
+        separator.className = "text-body-secondary";
+        separator.setAttribute("aria-hidden", "true");
+        separator.textContent = "·";
+
+        text.appendChild(percent);
+        text.appendChild(separator);
+    }
+
     text.appendChild(label);
 
     summary.appendChild(icon);
@@ -230,10 +234,7 @@ function createSensorCard(sensor) {
     appendMetaRow(metaList, "Sist sett", formatLastSeen(sensor.last_seen_at));
     appendMetaRow(metaList, "Signal", formatInteger(sensor.rssi_dbm, "dBm"));
     appendMetaRow(metaList, "Firmware", sensor.firmware_version || "Ukjend");
-
-    if (hasBatteryPercent(sensor)) {
-        appendMetaRow(metaList, "Batteri", createBatteryStatusContent(sensor));
-    }
+    appendMetaRow(metaList, "Batteri", createBatteryStatusContent(sensor));
 
     body.appendChild(metaList);
 
