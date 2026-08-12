@@ -91,6 +91,8 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert css_response.status_code == 200
     assert ".measurement-value-unit" in css_response.text
     assert ".measurement-summary > .col + .col .measurement-tile" in css_response.text
+    assert "@media (min-width: 768px) and (max-width: 1199.98px)" in css_response.text
+    assert "font-size: 1rem;" in css_response.text
     assert "white-space: nowrap;" in css_response.text
     assert ".battery-status-row" in css_response.text
     assert ".battery-progress" in css_response.text
