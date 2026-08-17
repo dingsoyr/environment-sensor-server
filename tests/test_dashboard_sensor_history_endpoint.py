@@ -50,6 +50,8 @@ def insert_measurement(
     temperature_c: float,
     humidity_percent: float,
     pressure_hpa: float,
+    battery_voltage: float | None = None,
+    battery_percent: int | None = None,
 ) -> None:
     with connect_database(database_path) as connection:
         connection.execute(
@@ -61,9 +63,11 @@ def insert_measurement(
                 timestamp_valid,
                 temperature_c,
                 humidity_percent,
-                pressure_hpa
+                pressure_hpa,
+                battery_voltage,
+                battery_percent
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 device_id,
@@ -73,6 +77,8 @@ def insert_measurement(
                 temperature_c,
                 humidity_percent,
                 pressure_hpa,
+                battery_voltage,
+                battery_percent,
             ),
         )
 
@@ -164,6 +170,8 @@ def test_dashboard_sensor_history_24h_returns_windowed_points_in_order(
                 "temperature_c": 11.0,
                 "humidity_percent": 51.0,
                 "pressure_hpa": 1001.0,
+                "battery_voltage": None,
+                "battery_percent": None,
             },
             {
                 "sequence": 3,
@@ -172,6 +180,8 @@ def test_dashboard_sensor_history_24h_returns_windowed_points_in_order(
                 "temperature_c": 13.0,
                 "humidity_percent": 53.0,
                 "pressure_hpa": 1003.0,
+                "battery_voltage": None,
+                "battery_percent": None,
             },
             {
                 "sequence": 5,
@@ -180,6 +190,8 @@ def test_dashboard_sensor_history_24h_returns_windowed_points_in_order(
                 "temperature_c": 12.0,
                 "humidity_percent": 52.0,
                 "pressure_hpa": 1002.0,
+                "battery_voltage": None,
+                "battery_percent": None,
             },
             {
                 "sequence": 6,
@@ -188,6 +200,8 @@ def test_dashboard_sensor_history_24h_returns_windowed_points_in_order(
                 "temperature_c": 14.0,
                 "humidity_percent": 54.0,
                 "pressure_hpa": 1004.0,
+                "battery_voltage": None,
+                "battery_percent": None,
             },
         ],
     }
@@ -352,6 +366,8 @@ def test_dashboard_sensor_history_explicit_range_shorter_than_30_days_returns_ra
                 "temperature_c": 21.5,
                 "humidity_percent": 48.0,
                 "pressure_hpa": 1005.5,
+                "battery_voltage": None,
+                "battery_percent": None,
             },
             {
                 "sequence": 11,
@@ -360,6 +376,8 @@ def test_dashboard_sensor_history_explicit_range_shorter_than_30_days_returns_ra
                 "temperature_c": 22.5,
                 "humidity_percent": 49.0,
                 "pressure_hpa": 1006.5,
+                "battery_voltage": None,
+                "battery_percent": None,
             },
         ],
     }
@@ -505,6 +523,12 @@ def test_dashboard_sensor_history_explicit_range_greater_than_30_days_returns_da
                 "pressure_min_hpa": 1000.0,
                 "pressure_avg_hpa": 1005.0,
                 "pressure_max_hpa": 1010.0,
+                "battery_voltage_min": None,
+                "battery_voltage_avg": None,
+                "battery_voltage_max": None,
+                "battery_percent_min": None,
+                "battery_percent_avg": None,
+                "battery_percent_max": None,
             },
             {
                 "period_start": day_zero + UTC_DAY_SECONDS,
@@ -518,6 +542,12 @@ def test_dashboard_sensor_history_explicit_range_greater_than_30_days_returns_da
                 "pressure_min_hpa": 1020.0,
                 "pressure_avg_hpa": 1025.0,
                 "pressure_max_hpa": 1030.0,
+                "battery_voltage_min": None,
+                "battery_voltage_avg": None,
+                "battery_voltage_max": None,
+                "battery_percent_min": None,
+                "battery_percent_avg": None,
+                "battery_percent_max": None,
             },
             {
                 "period_start": day_zero + (3 * UTC_DAY_SECONDS),
@@ -531,6 +561,12 @@ def test_dashboard_sensor_history_explicit_range_greater_than_30_days_returns_da
                 "pressure_min_hpa": 1040.0,
                 "pressure_avg_hpa": 1040.0,
                 "pressure_max_hpa": 1040.0,
+                "battery_voltage_min": None,
+                "battery_voltage_avg": None,
+                "battery_voltage_max": None,
+                "battery_percent_min": None,
+                "battery_percent_avg": None,
+                "battery_percent_max": None,
             },
             {
                 "period_start": day_zero + (31 * UTC_DAY_SECONDS),
@@ -544,9 +580,167 @@ def test_dashboard_sensor_history_explicit_range_greater_than_30_days_returns_da
                 "pressure_min_hpa": 1050.0,
                 "pressure_avg_hpa": 1050.0,
                 "pressure_max_hpa": 1050.0,
+                "battery_voltage_min": None,
+                "battery_voltage_avg": None,
+                "battery_voltage_max": None,
+                "battery_percent_min": None,
+                "battery_percent_avg": None,
+                "battery_percent_max": None,
             },
         ],
     }
+
+
+def test_dashboard_sensor_history_raw_returns_battery_fields_and_nulls_for_missing_samples(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_path = tmp_path / "environment.db"
+    now = 2_000_000
+
+    with create_client(database_path, monkeypatch, now=now) as client:
+        insert_device(database_path, device_id="sensor-a")
+        insert_measurement(
+            database_path,
+            device_id="sensor-a",
+            sequence=1,
+            measured_at=now - 120,
+            timestamp_valid=True,
+            temperature_c=10.0,
+            humidity_percent=50.0,
+            pressure_hpa=1000.0,
+            battery_voltage=3.91,
+            battery_percent=73,
+        )
+        insert_measurement(
+            database_path,
+            device_id="sensor-a",
+            sequence=2,
+            measured_at=now - 60,
+            timestamp_valid=True,
+            temperature_c=11.0,
+            humidity_percent=51.0,
+            pressure_hpa=1001.0,
+        )
+
+        response = client.get("/api/dashboard/sensors/sensor-a/history?period=24h")
+
+    assert response.status_code == 200
+    assert response.json()["points"] == [
+        {
+            "sequence": 1,
+            "measured_at": now - 120,
+            "timestamp_valid": True,
+            "temperature_c": 10.0,
+            "humidity_percent": 50.0,
+            "pressure_hpa": 1000.0,
+            "battery_voltage": 3.91,
+            "battery_percent": 73,
+        },
+        {
+            "sequence": 2,
+            "measured_at": now - 60,
+            "timestamp_valid": True,
+            "temperature_c": 11.0,
+            "humidity_percent": 51.0,
+            "pressure_hpa": 1001.0,
+            "battery_voltage": None,
+            "battery_percent": None,
+        },
+    ]
+
+
+def test_dashboard_sensor_history_day_returns_battery_aggregates(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    database_path = tmp_path / "environment.db"
+    day_zero = 1_704_067_200
+    history_from = day_zero
+    history_to = day_zero + (31 * UTC_DAY_SECONDS)
+
+    with create_client(database_path, monkeypatch, now=2_000_000) as client:
+        insert_device(database_path, device_id="sensor-a")
+        insert_measurement(
+            database_path,
+            device_id="sensor-a",
+            sequence=1,
+            measured_at=day_zero + 60,
+            timestamp_valid=True,
+            temperature_c=10.0,
+            humidity_percent=40.0,
+            pressure_hpa=1000.0,
+            battery_voltage=4.10,
+            battery_percent=90,
+        )
+        insert_measurement(
+            database_path,
+            device_id="sensor-a",
+            sequence=2,
+            measured_at=day_zero + 120,
+            timestamp_valid=True,
+            temperature_c=20.0,
+            humidity_percent=50.0,
+            pressure_hpa=1010.0,
+        )
+        insert_measurement(
+            database_path,
+            device_id="sensor-a",
+            sequence=3,
+            measured_at=day_zero + UTC_DAY_SECONDS + 60,
+            timestamp_valid=True,
+            temperature_c=30.0,
+            humidity_percent=60.0,
+            pressure_hpa=1020.0,
+            battery_voltage=3.90,
+            battery_percent=70,
+        )
+
+        response = client.get(
+            f"/api/dashboard/sensors/sensor-a/history?from={history_from}&to={history_to}"
+        )
+
+    assert response.status_code == 200
+    assert response.json()["points"][:2] == [
+        {
+            "period_start": day_zero,
+            "sample_count": 2,
+            "temperature_min_c": 10.0,
+            "temperature_avg_c": 15.0,
+            "temperature_max_c": 20.0,
+            "humidity_min_percent": 40.0,
+            "humidity_avg_percent": 45.0,
+            "humidity_max_percent": 50.0,
+            "pressure_min_hpa": 1000.0,
+            "pressure_avg_hpa": 1005.0,
+            "pressure_max_hpa": 1010.0,
+            "battery_voltage_min": 4.1,
+            "battery_voltage_avg": 4.1,
+            "battery_voltage_max": 4.1,
+            "battery_percent_min": 90,
+            "battery_percent_avg": 90.0,
+            "battery_percent_max": 90,
+        },
+        {
+            "period_start": day_zero + UTC_DAY_SECONDS,
+            "sample_count": 1,
+            "temperature_min_c": 30.0,
+            "temperature_avg_c": 30.0,
+            "temperature_max_c": 30.0,
+            "humidity_min_percent": 60.0,
+            "humidity_avg_percent": 60.0,
+            "humidity_max_percent": 60.0,
+            "pressure_min_hpa": 1020.0,
+            "pressure_avg_hpa": 1020.0,
+            "pressure_max_hpa": 1020.0,
+            "battery_voltage_min": 3.9,
+            "battery_voltage_avg": 3.9,
+            "battery_voltage_max": 3.9,
+            "battery_percent_min": 70,
+            "battery_percent_avg": 70.0,
+            "battery_percent_max": 70,
+        },
+    ]
 
 
 def test_dashboard_sensor_history_explicit_range_returns_empty_points_when_no_measurements_match(

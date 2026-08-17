@@ -66,6 +66,18 @@ const CHARTS = {
         maximumValueKey: "pressure_max_hpa",
         unit: "hPa",
     },
+    battery: {
+        containerId: "battery-chart",
+        title: "Batteri",
+        color: measurementColors.getMeasurementColor("battery"),
+        rawValueKey: "battery_percent",
+        averageValueKey: "battery_percent_avg",
+        minimumValueKey: "battery_percent_min",
+        maximumValueKey: "battery_percent_max",
+        voltageAverageKey: "battery_voltage_avg",
+        unit: "%",
+        emptyMessage: "Ingen batterihistorikk for vald periode enno.",
+    },
 };
 
 const deviceId = pageRoot ? pageRoot.dataset.deviceId || "" : "";
@@ -535,11 +547,42 @@ function createRawSeries(points, valueKey) {
     ]);
 }
 
+function createBatteryRawSeries(points) {
+    return points
+        .filter((point) => point.battery_percent !== null && point.battery_percent !== undefined)
+        .map((point) => ({
+            x: point.measured_at * 1000,
+            y: point.battery_percent,
+            battery_voltage: point.battery_voltage,
+        }));
+}
+
 function createAggregateAverageSeries(points, valueKey) {
     return points.map((point) => [
         point.period_start * 1000,
         point[valueKey],
     ]);
+}
+
+function createBatteryAggregateAverageSeries(points) {
+    return points
+        .filter((point) => point.battery_percent_avg !== null && point.battery_percent_avg !== undefined)
+        .map((point) => ({
+            x: point.period_start * 1000,
+            y: point.battery_percent_avg,
+            battery_voltage_avg: point.battery_voltage_avg,
+        }));
+}
+
+function createBatteryAggregateRangeSeries(points) {
+    return points
+        .filter((point) => point.battery_percent_min !== null && point.battery_percent_max !== null)
+        .map((point) => ({
+            x: point.period_start * 1000,
+            low: point.battery_percent_min,
+            high: point.battery_percent_max,
+            battery_voltage_avg: point.battery_voltage_avg,
+        }));
 }
 
 function createAggregateRangeSeries(points, minimumKey, maximumKey) {
@@ -598,7 +641,70 @@ function buildTooltipOptions(title, unit, resolution) {
     };
 }
 
-function renderChart(containerId, title, unit, series, resolution) {
+function buildBatteryTooltipOptions(resolution) {
+    if (resolution === "day") {
+        return {
+            shared: true,
+            formatter() {
+                const averagePoint = this.points.find(
+                    (point) => point.series.userOptions.custom?.kind === "average",
+                );
+                const rangePoint = this.points.find(
+                    (point) => point.series.userOptions.custom?.kind === "range",
+                );
+
+                const parts = [
+                    `<span>${Highcharts.dateFormat("%e. %b %Y", this.x)}</span>`,
+                ];
+
+                if (averagePoint) {
+                    parts.push(
+                        `<br><span>Batteri, gjennomsnitt: <b>${Highcharts.numberFormat(averagePoint.y, 1)} %</b></span>`,
+                    );
+
+                    if (
+                        averagePoint.point.options.battery_voltage_avg !== null
+                        && averagePoint.point.options.battery_voltage_avg !== undefined
+                    ) {
+                        parts.push(
+                            `<br><span>Batterispenning, gjennomsnitt: <b>${Highcharts.numberFormat(averagePoint.point.options.battery_voltage_avg, 2)} V</b></span>`,
+                        );
+                    }
+                }
+
+                if (rangePoint) {
+                    parts.push(
+                        `<br><span>Batteri, minimum: <b>${Highcharts.numberFormat(rangePoint.point.low, 1)} %</b></span>`,
+                    );
+                    parts.push(
+                        `<br><span>Batteri, maksimum: <b>${Highcharts.numberFormat(rangePoint.point.high, 1)} %</b></span>`,
+                    );
+                }
+
+                return parts.join("");
+            },
+        };
+    }
+
+    return {
+        xDateFormat: "%e. %b %Y, %H:%M",
+        pointFormatter() {
+            const parts = [
+                `<span>Batteri: <b>${Highcharts.numberFormat(this.y, 1)} %</b></span>`,
+            ];
+
+            if (this.options.battery_voltage !== null && this.options.battery_voltage !== undefined) {
+                parts.push(
+                    `<br><span>Batterispenning: <b>${Highcharts.numberFormat(this.options.battery_voltage, 2)} V</b></span>`,
+                );
+            }
+
+            return parts.join("");
+        },
+    };
+}
+
+function renderChart(containerId, title, unit, series, resolution, options = {}) {
     Highcharts.chart(containerId, {
         chart: {
             height: 280,
@@ -615,13 +721,80 @@ function renderChart(containerId, title, unit, series, resolution) {
         xAxis: {
             type: "datetime",
         },
-        yAxis: {
+        yAxis: options.yAxis ?? {
             title: {
                 text: unit,
             },
         },
-        tooltip: buildTooltipOptions(title, unit, resolution),
+        tooltip: options.tooltip ?? buildTooltipOptions(title, unit, resolution),
         series,
+        responsive: {
+            rules: [
+                {
+                    condition: {
+                        maxWidth: 575,
+                    },
+                    chartOptions: {
+                        chart: {
+                            height: 240,
+                        },
+                    },
+                },
+            ],
+        },
+    });
+}
+
+function renderNoDataChart(containerId, unit, message) {
+    Highcharts.chart(containerId, {
+        chart: {
+            height: 280,
+        },
+        title: {
+            text: null,
+        },
+        credits: {
+            enabled: false,
+        },
+        legend: {
+            enabled: false,
+        },
+        xAxis: {
+            visible: false,
+        },
+        yAxis: {
+            title: {
+                text: unit,
+            },
+            visible: false,
+        },
+        tooltip: {
+            enabled: false,
+        },
+        series: [],
+        annotations: [
+            {
+                draggable: "",
+                labels: [
+                    {
+                        point: {
+                            xAxis: 0,
+                            yAxis: 0,
+                            x: 0.5,
+                            y: 0.5,
+                        },
+                        text: message,
+                        align: "center",
+                        verticalAlign: "middle",
+                        backgroundColor: "transparent",
+                        borderWidth: 0,
+                        style: {
+                            fontWeight: "500",
+                        },
+                    },
+                ],
+            },
+        ],
         responsive: {
             rules: [
                 {
@@ -679,6 +852,36 @@ function renderRawHistory(points) {
         ],
         "raw",
     );
+
+    const batterySeries = createBatteryRawSeries(points);
+    if (batterySeries.length === 0) {
+        renderNoDataChart(CHARTS.battery.containerId, CHARTS.battery.unit, CHARTS.battery.emptyMessage);
+    } else {
+        renderChart(
+            CHARTS.battery.containerId,
+            CHARTS.battery.title,
+            CHARTS.battery.unit,
+            [
+                {
+                    type: "line",
+                    color: CHARTS.battery.color,
+                    data: batterySeries,
+                    tooltip: buildBatteryTooltipOptions("raw"),
+                },
+            ],
+            "raw",
+            {
+                tooltip: buildBatteryTooltipOptions("raw"),
+                yAxis: {
+                    title: {
+                        text: CHARTS.battery.unit,
+                    },
+                    min: 0,
+                    max: 100,
+                },
+            },
+        );
+    }
 
     historyEmpty.hidden = points.length !== 0;
 }
@@ -743,6 +946,60 @@ function renderAggregatedHistory(points) {
         createAggregateSeries(CHARTS.pressure, points),
         "day",
     );
+
+    const batteryRangeSeries = createBatteryAggregateRangeSeries(points);
+    const batteryAverageSeries = createBatteryAggregateAverageSeries(points);
+    if (batteryRangeSeries.length === 0 && batteryAverageSeries.length === 0) {
+        renderNoDataChart(CHARTS.battery.containerId, CHARTS.battery.unit, CHARTS.battery.emptyMessage);
+    } else {
+        renderChart(
+            CHARTS.battery.containerId,
+            CHARTS.battery.title,
+            CHARTS.battery.unit,
+            [
+                {
+                    type: "arearange",
+                    name: `${CHARTS.battery.title} spenn`,
+                    color: createChartRangeColor(CHARTS.battery.color),
+                    data: batteryRangeSeries,
+                    fillOpacity: 0.75,
+                    lineWidth: 0,
+                    marker: {
+                        enabled: false,
+                    },
+                    zIndex: 0,
+                    custom: {
+                        kind: "range",
+                    },
+                },
+                {
+                    type: "line",
+                    name: `${CHARTS.battery.title} gjennomsnitt`,
+                    color: CHARTS.battery.color,
+                    data: batteryAverageSeries,
+                    lineWidth: 2,
+                    marker: {
+                        enabled: false,
+                    },
+                    zIndex: 1,
+                    custom: {
+                        kind: "average",
+                    },
+                },
+            ],
+            "day",
+            {
+                tooltip: buildBatteryTooltipOptions("day"),
+                yAxis: {
+                    title: {
+                        text: CHARTS.battery.unit,
+                    },
+                    min: 0,
+                    max: 100,
+                },
+            },
+        );
+    }
 
     historyEmpty.hidden = points.length !== 0;
 }

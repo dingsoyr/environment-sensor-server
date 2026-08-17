@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -113,6 +113,13 @@ def should_return_raw_history(*, period: HistoryPeriod | None, history_from: int
         return True
 
     return history_to - history_from <= RAW_HISTORY_RANGE_LIMIT_SECONDS
+
+
+def create_history_json_response(history_response: DashboardSensorHistoryResponse) -> JSONResponse:
+    payload = history_response.model_dump(by_alias=True)
+    if payload.get("period") is None:
+        payload.pop("period", None)
+    return JSONResponse(content=payload)
 
 
 @asynccontextmanager
@@ -284,7 +291,6 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         "/api/dashboard/sensors/{device_id}/history",
         response_model=DashboardSensorHistoryResponse,
         response_model_by_alias=True,
-        response_model_exclude_none=True,
     )
     def get_dashboard_sensor_history(
         device_id: str,
@@ -292,7 +298,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
         period: HistoryPeriod | None = Query(default=None),
         measured_from: int | None = Query(default=None, alias="from"),
         measured_to: int | None = Query(default=None, alias="to"),
-    ) -> DashboardSensorHistoryResponse:
+    ) -> JSONResponse:
         selected_period, history_from, history_to = resolve_history_request(
             period=period,
             measured_from=measured_from,
@@ -326,7 +332,7 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
             raise HTTPException(status_code=500, detail="Internal Server Error") from error
 
         if use_raw_history:
-            return DashboardSensorHistoryRawResponse(
+            return create_history_json_response(DashboardSensorHistoryRawResponse(
                 device_id=device_id,
                 resolution="raw",
                 period=selected_period,
@@ -340,12 +346,14 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
                         temperature_c=point_record.temperature_c,
                         humidity_percent=point_record.humidity_percent,
                         pressure_hpa=point_record.pressure_hpa,
+                        battery_voltage=point_record.battery_voltage,
+                        battery_percent=point_record.battery_percent,
                     )
                     for point_record in point_records
                 ],
-            )
+            ))
 
-        return DashboardSensorHistoryDayResponse(
+        return create_history_json_response(DashboardSensorHistoryDayResponse(
             device_id=device_id,
             resolution="day",
             from_=history_from,
@@ -363,10 +371,16 @@ def create_app(database_path: str | Path | None = None) -> FastAPI:
                     pressure_min_hpa=point_record.pressure_min_hpa,
                     pressure_avg_hpa=point_record.pressure_avg_hpa,
                     pressure_max_hpa=point_record.pressure_max_hpa,
+                    battery_voltage_min=point_record.battery_voltage_min,
+                    battery_voltage_avg=point_record.battery_voltage_avg,
+                    battery_voltage_max=point_record.battery_voltage_max,
+                    battery_percent_min=point_record.battery_percent_min,
+                    battery_percent_avg=point_record.battery_percent_avg,
+                    battery_percent_max=point_record.battery_percent_max,
                 )
                 for point_record in point_records
             ],
-        )
+        ))
 
     @app.post(
         "/api/v1/measurements",

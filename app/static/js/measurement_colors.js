@@ -2,6 +2,7 @@ const MEASUREMENT_COLORS = {
     temperature: "#c4575a",
     humidity: "#4d8a57",
     pressure: "#7b62b3",
+    battery: "#b8860b",
 };
 
 function getMeasurementColor(measurementType) {

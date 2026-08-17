@@ -36,6 +36,7 @@ def test_dashboard_sensor_detail_page_returns_html_shell(tmp_path: Path) -> None
     assert "Miljøsensor" in response.text
     assert "Sensorar" in response.text
     assert "Historikk" in response.text
+    assert "Batteri" in response.text
     assert "Sensorstatus" in response.text
     assert "Konfigurasjon" in response.text
     assert "24 timar" in response.text
@@ -55,6 +56,7 @@ def test_dashboard_sensor_detail_page_returns_html_shell(tmp_path: Path) -> None
     assert "/static/js/measurement_colors.js" in response.text
     assert "/static/js/sensor_detail.js" in response.text
     assert 'data-device-id="sensor-a"' in response.text
+    assert 'id="battery-chart"' in response.text
 
 
 def test_dashboard_sensor_detail_page_escapes_device_id_in_html(tmp_path: Path) -> None:
@@ -90,6 +92,7 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert 'temperature: "#c4575a"' in measurement_colors_response.text
     assert 'humidity: "#4d8a57"' in measurement_colors_response.text
     assert 'pressure: "#7b62b3"' in measurement_colors_response.text
+    assert 'battery: "#b8860b"' in measurement_colors_response.text
     assert "window.MeasurementColors" in measurement_colors_response.text
     assert "function applyMeasurementValueColor(element, measurementType)" in measurement_colors_response.text
 
@@ -104,7 +107,7 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert 'badgeGroup.appendChild(createContactStateBadge(sensor.contact_state));' in dashboard_script_response.text
     assert "dataset.batteryStatus" in dashboard_script_response.text
     assert "batteryStatus.getLabel(sensor.battery_percent)" in dashboard_script_response.text
-    assert 'appendMetaRow(metaList, "Batteri", createBatteryStatusContent(sensor));' in dashboard_script_response.text
+    assert 'appendMetaRow(metaList, "Batteri:", createBatteryStatusContent(sensor));' in dashboard_script_response.text
     assert 'measurementSummary.className = "measurement-summary row row-cols-3 g-0 g-sm-2";' in dashboard_script_response.text
     assert 'unitElement.className = "measurement-value-unit";' in dashboard_script_response.text
     assert "measurementColors.applyMeasurementValueColor(valueElement, measurementType);" in dashboard_script_response.text
@@ -122,7 +125,7 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert 'unknown: { label: "Ukjend", className: "text-bg-secondary" }' in detail_script_response.text
     assert 'sensorSyncBadge.appendChild(createStatusBadge(detail.configuration.config_sync_state));' in detail_script_response.text
     assert 'sensorSyncBadge.appendChild(createContactStateBadge(detail.contact_state));' in detail_script_response.text
-    assert 'appendMetaRow(statusList, "Kontaktstatus", createContactStateBadge(detail.contact_state));' in detail_script_response.text
+    assert 'appendMetaRow(statusList, "Kontaktstatus:", createContactStateBadge(detail.contact_state));' in detail_script_response.text
     assert "battery-progress" in detail_script_response.text
     assert "progress-bar" in detail_script_response.text
     assert "aria-valuenow" in detail_script_response.text
@@ -139,6 +142,7 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert 'measurementColors.getMeasurementColor("temperature")' in detail_script_response.text
     assert 'measurementColors.getMeasurementColor("humidity")' in detail_script_response.text
     assert 'measurementColors.getMeasurementColor("pressure")' in detail_script_response.text
+    assert 'measurementColors.getMeasurementColor("battery")' in detail_script_response.text
     assert 'measurementColors.applyMeasurementValueColor(valueElement, measurementType);' in detail_script_response.text
     assert "Highcharts.setOptions({" in detail_script_response.text
     assert "useUTC: false" in detail_script_response.text
@@ -146,8 +150,12 @@ def test_dashboard_frontend_assets_include_shared_battery_hooks(tmp_path: Path) 
     assert 'color: CHARTS.temperature.color' in detail_script_response.text
     assert 'color: CHARTS.humidity.color' in detail_script_response.text
     assert 'color: CHARTS.pressure.color' in detail_script_response.text
+    assert 'color: CHARTS.battery.color' in detail_script_response.text
     assert 'color: createChartRangeColor(chartConfig.color)' in detail_script_response.text
     assert 'color: chartConfig.color' in detail_script_response.text
+    assert 'battery_voltage_avg' in detail_script_response.text
+    assert 'Batterispenning' in detail_script_response.text
+    assert 'max: 100' in detail_script_response.text
 
     assert css_response.status_code == 200
     assert ".measurement-value-unit" in css_response.text

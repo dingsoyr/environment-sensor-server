@@ -129,6 +129,8 @@ def insert_history_measurement(
     temperature_c: float,
     humidity_percent: float,
     pressure_hpa: float,
+    battery_voltage: float | None = None,
+    battery_percent: int | None = None,
 ) -> None:
     with connect_database(database_path) as connection:
         connection.execute(
@@ -140,9 +142,11 @@ def insert_history_measurement(
                 timestamp_valid,
                 temperature_c,
                 humidity_percent,
-                pressure_hpa
+                pressure_hpa,
+                battery_voltage,
+                battery_percent
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 device_id,
@@ -152,6 +156,8 @@ def insert_history_measurement(
                 temperature_c,
                 humidity_percent,
                 pressure_hpa,
+                battery_voltage,
+                battery_percent,
             ),
         )
 
@@ -172,12 +178,18 @@ def test_initialize_database_creates_schema(tmp_path: Path) -> None:
             row[1]: row[4]
             for row in connection.execute("PRAGMA table_info(devices)")
         }
+        measurement_columns = {
+            row[1]: row[3]
+            for row in connection.execute("PRAGMA table_info(measurements)")
+        }
 
     assert "devices" in table_names
     assert "measurements" in table_names
     assert "config_version" in device_columns
     assert "reported_config_version" in device_columns
     assert device_columns["reported_config_version"] == "0"
+    assert measurement_columns["battery_voltage"] == 0
+    assert measurement_columns["battery_percent"] == 0
 
 
 def test_initialize_database_is_idempotent(tmp_path: Path) -> None:
@@ -472,6 +484,12 @@ def test_list_dashboard_sensor_history_by_day_aggregates_by_utc_day_and_respects
             "pressure_min_hpa": 1001.0,
             "pressure_avg_hpa": 1001.0,
             "pressure_max_hpa": 1001.0,
+            "battery_voltage_min": None,
+            "battery_voltage_avg": None,
+            "battery_voltage_max": None,
+            "battery_percent_min": None,
+            "battery_percent_avg": None,
+            "battery_percent_max": None,
         },
         {
             "period_start": day_zero + (2 * UTC_DAY_SECONDS),
@@ -485,5 +503,125 @@ def test_list_dashboard_sensor_history_by_day_aggregates_by_utc_day_and_respects
             "pressure_min_hpa": 1003.0,
             "pressure_avg_hpa": 1004.0,
             "pressure_max_hpa": 1005.0,
+            "battery_voltage_min": None,
+            "battery_voltage_avg": None,
+            "battery_voltage_max": None,
+            "battery_percent_min": None,
+            "battery_percent_avg": None,
+            "battery_percent_max": None,
         },
     ]
+
+
+def test_list_dashboard_sensor_history_by_day_includes_battery_aggregates_and_ignores_nulls(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "environment.db"
+    initialize_database(database_path)
+    insert_device(database_path, "sensor-a")
+
+    day_zero = 1_704_067_200
+
+    insert_history_measurement(
+        database_path,
+        device_id="sensor-a",
+        sequence=1,
+        measured_at=day_zero + 60,
+        timestamp_valid=True,
+        temperature_c=10.0,
+        humidity_percent=20.0,
+        pressure_hpa=1001.0,
+        battery_voltage=4.10,
+        battery_percent=90,
+    )
+    insert_history_measurement(
+        database_path,
+        device_id="sensor-a",
+        sequence=2,
+        measured_at=day_zero + 120,
+        timestamp_valid=True,
+        temperature_c=12.0,
+        humidity_percent=22.0,
+        pressure_hpa=1002.0,
+        battery_voltage=None,
+        battery_percent=None,
+    )
+    insert_history_measurement(
+        database_path,
+        device_id="sensor-a",
+        sequence=3,
+        measured_at=day_zero + 180,
+        timestamp_valid=True,
+        temperature_c=14.0,
+        humidity_percent=24.0,
+        pressure_hpa=1003.0,
+        battery_voltage=3.90,
+        battery_percent=70,
+    )
+
+    points = list_dashboard_sensor_history_by_day(
+        "sensor-a",
+        measured_from=day_zero,
+        measured_to=day_zero + UTC_DAY_SECONDS,
+        database_path=database_path,
+    )
+
+    assert [asdict(point) for point in points] == [
+        {
+            "period_start": day_zero,
+            "sample_count": 3,
+            "temperature_min_c": 10.0,
+            "temperature_avg_c": 12.0,
+            "temperature_max_c": 14.0,
+            "humidity_min_percent": 20.0,
+            "humidity_avg_percent": 22.0,
+            "humidity_max_percent": 24.0,
+            "pressure_min_hpa": 1001.0,
+            "pressure_avg_hpa": 1002.0,
+            "pressure_max_hpa": 1003.0,
+            "battery_voltage_min": 3.9,
+            "battery_voltage_avg": 4.0,
+            "battery_voltage_max": 4.1,
+            "battery_percent_min": 70,
+            "battery_percent_avg": 80.0,
+            "battery_percent_max": 90,
+        }
+    ]
+
+
+def test_list_dashboard_sensor_history_by_day_returns_null_battery_aggregates_when_day_has_no_battery_samples(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "environment.db"
+    initialize_database(database_path)
+    insert_device(database_path, "sensor-a")
+
+    day_zero = 1_704_067_200
+
+    insert_history_measurement(
+        database_path,
+        device_id="sensor-a",
+        sequence=1,
+        measured_at=day_zero + 60,
+        timestamp_valid=True,
+        temperature_c=10.0,
+        humidity_percent=20.0,
+        pressure_hpa=1001.0,
+    )
+
+    points = list_dashboard_sensor_history_by_day(
+        "sensor-a",
+        measured_from=day_zero,
+        measured_to=day_zero + UTC_DAY_SECONDS,
+        database_path=database_path,
+    )
+
+    assert len(points) == 1
+    point = asdict(points[0])
+    assert point["sample_count"] == 1
+    assert point["battery_voltage_min"] is None
+    assert point["battery_voltage_avg"] is None
+    assert point["battery_voltage_max"] is None
+    assert point["battery_percent_min"] is None
+    assert point["battery_percent_avg"] is None
+    assert point["battery_percent_max"] is None

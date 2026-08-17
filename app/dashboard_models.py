@@ -64,6 +64,8 @@ class DashboardSensorHistoryPoint(BaseModel):
     temperature_c: float
     humidity_percent: float
     pressure_hpa: float
+    battery_voltage: float | None
+    battery_percent: int | None
 
 
 class DashboardSensorHistoryDayPoint(BaseModel):
@@ -78,6 +80,12 @@ class DashboardSensorHistoryDayPoint(BaseModel):
     pressure_min_hpa: float
     pressure_avg_hpa: float
     pressure_max_hpa: float
+    battery_voltage_min: float | None
+    battery_voltage_avg: float | None
+    battery_voltage_max: float | None
+    battery_percent_min: int | None
+    battery_percent_avg: float | None
+    battery_percent_max: int | None
 
 
 class DashboardSensorHistoryRawResponse(BaseModel):

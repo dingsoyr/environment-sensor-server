@@ -86,7 +86,7 @@ def test_first_upload_creates_device_and_measurements(
             ("sensor-a",),
         ).fetchone()
         measurement_rows = connection.execute(
-            "SELECT sequence, measured_at FROM measurements WHERE device_id = ? ORDER BY sequence",
+            "SELECT sequence, measured_at, battery_voltage, battery_percent FROM measurements WHERE device_id = ? ORDER BY sequence",
             ("sensor-a",),
         ).fetchall()
 
@@ -102,7 +102,10 @@ def test_first_upload_creates_device_and_measurements(
         3.92,
         74,
     )
-    assert measurement_rows == [(721, 1_786_300_052), (722, 1_786_303_652)]
+    assert measurement_rows == [
+        (721, 1_786_300_052, 3.92, 74),
+        (722, 1_786_303_652, 3.92, 74),
+    ]
 
 
 def test_device_status_is_updated_on_later_upload(tmp_path: Path, monkeypatch) -> None:
@@ -355,14 +358,14 @@ def test_duplicate_sequence_does_not_overwrite_original_measurement(
     with connect_database(database_path) as connection:
         measurement_row = connection.execute(
             """
-            SELECT measured_at, timestamp_valid, temperature_c, humidity_percent, pressure_hpa
+            SELECT measured_at, timestamp_valid, temperature_c, humidity_percent, pressure_hpa, battery_voltage, battery_percent
             FROM measurements
             WHERE device_id = ? AND sequence = ?
             """,
             ("sensor-a", 721),
         ).fetchone()
 
-    assert measurement_row == (1_786_300_052, 1, 19.01, 53.49, 990.79)
+    assert measurement_row == (1_786_300_052, 1, 19.01, 53.49, 990.79, 3.92, 74)
 
 
 def test_unsorted_measurements_are_acknowledged_contiguously(
@@ -473,8 +476,13 @@ def test_battery_fields_may_be_absent(tmp_path: Path, monkeypatch) -> None:
             "SELECT battery_voltage, battery_percent FROM devices WHERE device_id = ?",
             ("sensor-a",),
         ).fetchone()
+        measurement_battery_rows = connection.execute(
+            "SELECT battery_voltage, battery_percent FROM measurements WHERE device_id = ? ORDER BY sequence",
+            ("sensor-a",),
+        ).fetchall()
 
     assert battery_row == (None, None)
+    assert measurement_battery_rows == [(None, None), (None, None)]
 
 
 def test_ingestion_is_atomic_on_non_duplicate_database_failure(

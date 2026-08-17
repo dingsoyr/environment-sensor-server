@@ -69,9 +69,11 @@ def ingest_measurement_upload(
                 timestamp_valid,
                 temperature_c,
                 humidity_percent,
-                pressure_hpa
+                pressure_hpa,
+                battery_voltage,
+                battery_percent
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(device_id, sequence) DO NOTHING
             """,
             [
@@ -83,6 +85,8 @@ def ingest_measurement_upload(
                     measurement.temperature_c,
                     measurement.humidity_percent,
                     measurement.pressure_hpa,
+                    request.status.battery_voltage,
+                    request.status.battery_percent,
                 )
                 for measurement in request.measurements
             ],

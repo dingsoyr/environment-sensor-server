@@ -55,6 +55,8 @@ class DashboardSensorHistoryPointRecord:
     temperature_c: float
     humidity_percent: float
     pressure_hpa: float
+    battery_voltage: float | None
+    battery_percent: int | None
 
 
 @dataclass(frozen=True)
@@ -70,6 +72,12 @@ class DashboardSensorHistoryDayPointRecord:
     pressure_min_hpa: float
     pressure_avg_hpa: float
     pressure_max_hpa: float
+    battery_voltage_min: float | None
+    battery_voltage_avg: float | None
+    battery_voltage_max: float | None
+    battery_percent_min: int | None
+    battery_percent_avg: float | None
+    battery_percent_max: int | None
 
 
 @dataclass(frozen=True)
@@ -196,6 +204,8 @@ def initialize_database(database_path: str | Path | None = None) -> Path:
                 temperature_c REAL NOT NULL,
                 humidity_percent REAL NOT NULL,
                 pressure_hpa REAL NOT NULL,
+                battery_voltage REAL,
+                battery_percent INTEGER,
                 UNIQUE (device_id, sequence),
                 FOREIGN KEY (device_id) REFERENCES devices(device_id)
             );
@@ -331,7 +341,9 @@ def list_dashboard_sensor_history(
                 timestamp_valid,
                 temperature_c,
                 humidity_percent,
-                pressure_hpa
+                pressure_hpa,
+                battery_voltage,
+                battery_percent
             FROM measurements
             WHERE device_id = ?
               AND measured_at >= ?
@@ -349,6 +361,8 @@ def list_dashboard_sensor_history(
             temperature_c=row[3],
             humidity_percent=row[4],
             pressure_hpa=row[5],
+            battery_voltage=row[6],
+            battery_percent=row[7],
         )
         for row in rows
     ]
@@ -374,7 +388,13 @@ def list_dashboard_sensor_history_by_day(
                 MAX(humidity_percent) AS humidity_max_percent,
                 MIN(pressure_hpa) AS pressure_min_hpa,
                 AVG(pressure_hpa) AS pressure_avg_hpa,
-                MAX(pressure_hpa) AS pressure_max_hpa
+                                MAX(pressure_hpa) AS pressure_max_hpa,
+                                MIN(battery_voltage) AS battery_voltage_min,
+                                AVG(battery_voltage) AS battery_voltage_avg,
+                                MAX(battery_voltage) AS battery_voltage_max,
+                                MIN(battery_percent) AS battery_percent_min,
+                                AVG(battery_percent) AS battery_percent_avg,
+                                MAX(battery_percent) AS battery_percent_max
             FROM measurements
             WHERE device_id = ?
               AND measured_at >= ?
@@ -398,6 +418,12 @@ def list_dashboard_sensor_history_by_day(
             pressure_min_hpa=row[8],
             pressure_avg_hpa=row[9],
             pressure_max_hpa=row[10],
+            battery_voltage_min=row[11],
+            battery_voltage_avg=row[12],
+            battery_voltage_max=row[13],
+            battery_percent_min=row[14],
+            battery_percent_avg=row[15],
+            battery_percent_max=row[16],
         )
         for row in rows
     ]
