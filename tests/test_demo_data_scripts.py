@@ -10,6 +10,11 @@ DELETE_SCRIPT_PATH = Path(__file__).resolve().parent.parent / "scripts" / "delet
 EXPECTED_MEASUREMENT_COUNT = 730 * 24
 EXPECTED_TIMESTAMP_SPAN_SECONDS = (EXPECTED_MEASUREMENT_COUNT - 1) * 3600
 HALF_YEAR_HOURS = 24 * 182
+MIN_EXPECTED_BATTERY_PERCENT = 15
+MAX_EXPECTED_BATTERY_PERCENT = 100
+MIN_EXPECTED_BATTERY_VOLTAGE = 3.50
+MAX_EXPECTED_BATTERY_VOLTAGE = 4.20
+MIN_EXPECTED_RESET_JUMP_PERCENT = 40
 
 
 def run_sql_script(database_path: Path, script_path: Path) -> None:
@@ -94,7 +99,13 @@ def test_demo_data_scripts_create_rerun_and_cleanup(tmp_path: Path) -> None:
                 MIN(humidity_percent),
                 MAX(humidity_percent),
                 MIN(pressure_hpa),
-                MAX(pressure_hpa)
+                MAX(pressure_hpa),
+                COUNT(battery_voltage),
+                COUNT(battery_percent),
+                MIN(battery_voltage),
+                MAX(battery_voltage),
+                MIN(battery_percent),
+                MAX(battery_percent)
             FROM measurements
             WHERE device_id = 'sensor-demo-001'
             """
@@ -140,6 +151,44 @@ def test_demo_data_scripts_create_rerun_and_cleanup(tmp_path: Path) -> None:
                 HALF_YEAR_HOURS * 4,
             ),
         ).fetchone()
+        battery_transition_stats = connection.execute(
+            """
+            WITH ordered AS (
+                SELECT
+                    sequence,
+                    battery_percent,
+                    LAG(battery_percent) OVER (ORDER BY sequence) AS previous_battery_percent
+                FROM measurements
+                WHERE device_id = 'sensor-demo-001'
+            )
+            SELECT
+                SUM(CASE WHEN previous_battery_percent IS NOT NULL AND battery_percent < previous_battery_percent THEN 1 ELSE 0 END),
+                SUM(CASE WHEN previous_battery_percent IS NOT NULL AND battery_percent > previous_battery_percent THEN 1 ELSE 0 END),
+                SUM(CASE WHEN previous_battery_percent IS NOT NULL AND battery_percent - previous_battery_percent >= ? THEN 1 ELSE 0 END)
+            FROM ordered
+            """,
+            (MIN_EXPECTED_RESET_JUMP_PERCENT,),
+        ).fetchone()
+        measurement_endpoints = connection.execute(
+            """
+            SELECT
+                oldest.battery_voltage,
+                oldest.battery_percent,
+                newest.battery_voltage,
+                newest.battery_percent
+            FROM
+                (SELECT battery_voltage, battery_percent FROM measurements WHERE device_id = 'sensor-demo-001' ORDER BY sequence ASC LIMIT 1) AS oldest,
+                (SELECT battery_voltage, battery_percent FROM measurements WHERE device_id = 'sensor-demo-001' ORDER BY sequence DESC LIMIT 1) AS newest
+            """
+        ).fetchone()
+        battery_snapshot = connection.execute(
+            """
+            SELECT sequence, battery_voltage, battery_percent
+            FROM measurements
+            WHERE device_id = 'sensor-demo-001'
+            ORDER BY sequence
+            """
+        ).fetchall()
 
     assert demo_device is not None
     assert demo_device[0] == "sensor-demo-001"
@@ -150,8 +199,8 @@ def test_demo_data_scripts_create_rerun_and_cleanup(tmp_path: Path) -> None:
     assert demo_device[5] == 3600
     assert demo_device[6] is not None
     assert demo_device[7] == -67
-    assert demo_device[8] == 4.08
-    assert demo_device[9] == 96
+    assert demo_device[8] is not None
+    assert demo_device[9] is not None
 
     assert measurement_stats is not None
     assert measurement_stats[0] == EXPECTED_MEASUREMENT_COUNT
@@ -164,8 +213,27 @@ def test_demo_data_scripts_create_rerun_and_cleanup(tmp_path: Path) -> None:
     assert measurement_stats[8] < measurement_stats[9]
     assert measurement_stats[10] < measurement_stats[11]
     assert measurement_stats[12] < measurement_stats[13]
+    assert measurement_stats[14] == EXPECTED_MEASUREMENT_COUNT
+    assert measurement_stats[15] == EXPECTED_MEASUREMENT_COUNT
+    assert MIN_EXPECTED_BATTERY_VOLTAGE <= measurement_stats[16] <= MAX_EXPECTED_BATTERY_VOLTAGE
+    assert MIN_EXPECTED_BATTERY_VOLTAGE <= measurement_stats[17] <= MAX_EXPECTED_BATTERY_VOLTAGE
+    assert MIN_EXPECTED_BATTERY_PERCENT <= measurement_stats[18] <= MAX_EXPECTED_BATTERY_PERCENT
+    assert MIN_EXPECTED_BATTERY_PERCENT <= measurement_stats[19] <= MAX_EXPECTED_BATTERY_PERCENT
+    assert measurement_stats[16] < measurement_stats[17]
+    assert measurement_stats[18] < measurement_stats[19]
     assert demo_device[6] == measurement_stats[5]
     assert hourly_spacing == (3600, 3600)
+
+    assert battery_transition_stats is not None
+    assert battery_transition_stats[0] > 200
+    assert battery_transition_stats[1] > 0
+    assert battery_transition_stats[2] >= 3
+
+    assert measurement_endpoints is not None
+    assert measurement_endpoints[0] is not None
+    assert measurement_endpoints[1] is not None
+    assert measurement_endpoints[2] == demo_device[8]
+    assert measurement_endpoints[3] == demo_device[9]
 
     assert seasonal_temperature_windows is not None
     first_half_year_average = seasonal_temperature_windows[0]
@@ -198,6 +266,17 @@ def test_demo_data_scripts_create_rerun_and_cleanup(tmp_path: Path) -> None:
         unrelated_before_cleanup = connection.execute(
             "SELECT COUNT(*) FROM devices WHERE device_id = 'sensor-real-001'"
         ).fetchone()[0]
+        rerun_battery_snapshot = connection.execute(
+            """
+            SELECT sequence, battery_voltage, battery_percent
+            FROM measurements
+            WHERE device_id = 'sensor-demo-001'
+            ORDER BY sequence
+            """
+        ).fetchall()
+        rerun_demo_device_battery = connection.execute(
+            "SELECT battery_voltage, battery_percent FROM devices WHERE device_id = 'sensor-demo-001'"
+        ).fetchone()
 
     assert rerun_measurement_stats == (
         EXPECTED_MEASUREMENT_COUNT,
@@ -206,6 +285,8 @@ def test_demo_data_scripts_create_rerun_and_cleanup(tmp_path: Path) -> None:
         EXPECTED_MEASUREMENT_COUNT,
     )
     assert unrelated_before_cleanup == 1
+    assert rerun_battery_snapshot == battery_snapshot
+    assert rerun_demo_device_battery == (measurement_endpoints[2], measurement_endpoints[3])
 
     run_sql_script(database_path, DELETE_SCRIPT_PATH)
 

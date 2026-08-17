@@ -23,8 +23,8 @@ SELECT
     3600,
     CAST(strftime('%s', 'now') AS INTEGER) / 3600 * 3600,
     -67,
-    4.08,
-    96
+    NULL,
+    NULL
 WHERE NOT EXISTS (
     SELECT 1
     FROM devices
@@ -39,8 +39,8 @@ SET device_name = 'Demo sensor',
     measurement_interval_seconds = 3600,
     last_seen_at = CAST(strftime('%s', 'now') AS INTEGER) / 3600 * 3600,
     rssi_dbm = -67,
-    battery_voltage = 4.08,
-    battery_percent = 96
+    battery_voltage = NULL,
+    battery_percent = NULL
 WHERE device_id = 'sensor-demo-001';
 
 DELETE FROM measurements
@@ -52,6 +52,7 @@ WITH RECURSIVE
             'sensor-demo-001' AS device_id,
             CAST(strftime('%s', 'now') AS INTEGER) / 3600 * 3600 AS latest_hour,
             17520 AS total_points,
+            4380 AS cycle_hours,
             24 * 365.0 AS seasonal_cycle_hours,
             6.283185307179586 AS tau
     ),
@@ -69,7 +70,9 @@ INSERT INTO measurements (
     timestamp_valid,
     temperature_c,
     humidity_percent,
-    pressure_hpa
+    pressure_hpa,
+    battery_voltage,
+    battery_percent
 )
 SELECT
     parameters.device_id,
@@ -95,8 +98,58 @@ SELECT
         + 6.8 * sin(parameters.tau * hours.hour_index / 216.0)
         + 1.9 * sin(parameters.tau * hours.hour_index / 72.0),
         2
+    ),
+    ROUND(
+        MIN(
+            MAX(
+                3.55
+                + 0.35 * (
+                    (1.0 - ((hours.hour_index % parameters.cycle_hours) / CAST(parameters.cycle_hours AS REAL)))
+                    * (1.0 - ((hours.hour_index % parameters.cycle_hours) / CAST(parameters.cycle_hours AS REAL)))
+                    * (1.0 + ((hours.hour_index % parameters.cycle_hours) / CAST(parameters.cycle_hours AS REAL)))
+                )
+                + 0.30 * (
+                    (1.0 - ((hours.hour_index % parameters.cycle_hours) / CAST(parameters.cycle_hours AS REAL)))
+                    * (1.0 - ((hours.hour_index % parameters.cycle_hours) / CAST(parameters.cycle_hours AS REAL)))
+                )
+                + 0.01 * sin(
+                    parameters.tau * ((hours.hour_index % parameters.cycle_hours) / CAST(parameters.cycle_hours AS REAL))
+                ),
+                3.50
+            ),
+            4.20
+        ),
+        2
+    ),
+    CAST(
+        ROUND(
+            18.0
+            + 82.0 * (
+                (1.0 - ((hours.hour_index % parameters.cycle_hours) / CAST(parameters.cycle_hours AS REAL)))
+                * (1.0 - ((hours.hour_index % parameters.cycle_hours) / CAST(parameters.cycle_hours AS REAL)))
+                * (1.0 + ((hours.hour_index % parameters.cycle_hours) / CAST(parameters.cycle_hours AS REAL)))
+            ),
+            0
+        ) AS INTEGER
     )
 FROM parameters
 CROSS JOIN hours;
+
+UPDATE devices
+SET battery_voltage = (
+        SELECT m.battery_voltage
+        FROM measurements m
+        WHERE m.device_id = devices.device_id
+        ORDER BY m.sequence DESC
+        LIMIT 1
+    ),
+    battery_percent = (
+        SELECT m.battery_percent
+        FROM measurements m
+        WHERE m.device_id = devices.device_id
+        ORDER BY m.sequence DESC
+        LIMIT 1
+    )
+WHERE device_id = 'sensor-demo-001';
 
 COMMIT;

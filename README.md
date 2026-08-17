@@ -254,6 +254,14 @@ Physical ESP32 or other hardware integration testing is outside pytest.
 
 The current suite may emit an existing upstream FastAPI/Starlette TestClient deprecation warning related to `httpx`. Treat that as a warning, not a project test failure.
 
+## Battery persistence
+
+The latest reported battery state remains stored on the `devices` row in `battery_voltage` and `battery_percent` for current dashboard status.
+
+Battery values are also stored historically per measurement in the `measurements` table when the device upload includes them, so battery history can be queried and charted alongside other measurement history.
+
+The project does not yet provide database migrations. After schema changes during development, recreate the local development database instead of upgrading an existing one.
+
 ## API contract
 
 The version 1 sensor API is documented in:
@@ -410,7 +418,7 @@ WHERE device_id = 'sensor-demo-001'
 GROUP BY device_id;
 ```
 
-The create script regenerates exactly 17,520 hourly measurements for the demo device, spanning approximately 730 days (about 2 years), and remains useful for current 24h / 7d / 30d dashboard views as well as future long-range history development.
+The create script regenerates exactly 17,520 hourly measurements for the demo device, spanning approximately 730 days (about 2 years), and remains useful for current 24h / 7d / 30d dashboard views as well as future long-range history development. The dataset now also includes deterministic synthetic historical battery data with several discharge/reset cycles so the battery history visualization is easy to test; this is demo data only and not a calibrated battery-life model.
 
 ## Project structure
 
