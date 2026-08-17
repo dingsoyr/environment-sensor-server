@@ -24,9 +24,7 @@ Example:
   "firmware_version": "0.1.0",
   "config_version": 2,
   "status": {
-    "rssi_dbm": -61,
-    "battery_voltage": 3.92,
-    "battery_percent": 74
+    "rssi_dbm": -61
   },
   "measurements": [
     {
@@ -35,7 +33,9 @@ Example:
       "timestamp_valid": true,
       "temperature_c": 19.01,
       "humidity_percent": 53.49,
-      "pressure_hpa": 990.79
+      "pressure_hpa": 990.79,
+      "battery_voltage": 3.95,
+      "battery_percent": 78
     },
     {
       "sequence": 722,
@@ -43,7 +43,9 @@ Example:
       "timestamp_valid": true,
       "temperature_c": 18.94,
       "humidity_percent": 53.80,
-      "pressure_hpa": 990.83
+      "pressure_hpa": 990.83,
+      "battery_voltage": 3.92,
+      "battery_percent": 74
     }
   ]
 }
@@ -67,10 +69,6 @@ Example:
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `rssi_dbm` | integer | yes | Wi-Fi RSSI at transmission time in dBm. |
-| `battery_voltage` | number | no | Battery voltage in volts. |
-| `battery_percent` | integer | no | Estimated battery state of charge from 0 to 100 percent. |
-
-Battery fields are optional so devices without battery measurement support can use the same API.
 
 ### Measurement
 
@@ -82,6 +80,10 @@ Battery fields are optional so devices without battery measurement support can u
 | `temperature_c` | number | yes | Temperature in degrees Celsius. |
 | `humidity_percent` | number | yes | Relative humidity in percent. |
 | `pressure_hpa` | number | yes | Atmospheric pressure in hPa. |
+| `battery_voltage` | number | no | Battery voltage in volts associated with this measurement. |
+| `battery_percent` | integer | no | Estimated battery state of charge from 0 to 100 percent associated with this measurement. |
+
+Battery fields are optional on each measurement so devices without battery measurement support can use the same API. When present, they represent the battery state captured with that specific measurement.
 
 ## Successful response
 

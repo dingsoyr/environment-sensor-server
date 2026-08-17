@@ -16,8 +16,6 @@ def make_request_payload() -> dict:
         "config_version": 2,
         "status": {
             "rssi_dbm": -61,
-            "battery_voltage": 3.92,
-            "battery_percent": 74,
         },
         "measurements": [
             {
@@ -27,6 +25,8 @@ def make_request_payload() -> dict:
                 "temperature_c": 19.01,
                 "humidity_percent": 53.49,
                 "pressure_hpa": 990.79,
+                "battery_voltage": 3.95,
+                "battery_percent": 78,
             },
             {
                 "sequence": 722,
@@ -35,6 +35,8 @@ def make_request_payload() -> dict:
                 "temperature_c": 18.94,
                 "humidity_percent": 53.80,
                 "pressure_hpa": 990.83,
+                "battery_voltage": 3.92,
+                "battery_percent": 74,
             },
         ],
     }
@@ -243,7 +245,10 @@ def test_repeated_identical_post_is_idempotent(tmp_path: Path, monkeypatch) -> N
 def test_request_without_battery_fields_succeeds(tmp_path: Path, monkeypatch) -> None:
     database_path = tmp_path / "environment.db"
     payload = make_request_payload()
-    payload["status"] = {"rssi_dbm": -61}
+    payload["measurements"][0].pop("battery_voltage")
+    payload["measurements"][0].pop("battery_percent")
+    payload["measurements"][1].pop("battery_voltage")
+    payload["measurements"][1].pop("battery_percent")
 
     with create_client(database_path, monkeypatch) as client:
         response = client.post("/api/v1/measurements", json=payload)
@@ -257,6 +262,18 @@ def test_request_without_battery_fields_succeeds(tmp_path: Path, monkeypatch) ->
         ).fetchone()
 
     assert battery_row == (None, None)
+
+
+def test_request_with_battery_fields_in_status_is_rejected(tmp_path: Path, monkeypatch) -> None:
+    database_path = tmp_path / "environment.db"
+    payload = make_request_payload()
+    payload["status"]["battery_voltage"] = 3.92
+    payload["status"]["battery_percent"] = 74
+
+    with create_client(database_path, monkeypatch) as client:
+        response = client.post("/api/v1/measurements", json=payload)
+
+    assert response.status_code == 422
 
 
 def test_invalid_api_version_is_rejected(tmp_path: Path, monkeypatch) -> None:

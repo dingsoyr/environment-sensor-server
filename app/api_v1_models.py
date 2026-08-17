@@ -2,25 +2,29 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 
 NonEmptyString = Annotated[str, StringConstraints(min_length=1)]
 
 
 class DeviceStatus(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     rssi_dbm: int
-    battery_voltage: float | None = None
-    battery_percent: int | None = Field(default=None, ge=0, le=100)
 
 
 class MeasurementUploadItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     sequence: int = Field(ge=0)
     measured_at: int
     timestamp_valid: bool
     temperature_c: float
     humidity_percent: float
     pressure_hpa: float
+    battery_voltage: float | None = None
+    battery_percent: int | None = Field(default=None, ge=0, le=100)
 
 
 class MeasurementUploadRequest(BaseModel):

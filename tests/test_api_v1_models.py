@@ -12,8 +12,6 @@ def make_request_payload() -> dict:
         "config_version": 2,
         "status": {
             "rssi_dbm": -61,
-            "battery_voltage": 3.92,
-            "battery_percent": 74,
         },
         "measurements": [
             {
@@ -23,6 +21,8 @@ def make_request_payload() -> dict:
                 "temperature_c": 19.01,
                 "humidity_percent": 53.49,
                 "pressure_hpa": 990.79,
+                "battery_voltage": 3.95,
+                "battery_percent": 78,
             },
             {
                 "sequence": 722,
@@ -31,6 +31,8 @@ def make_request_payload() -> dict:
                 "temperature_c": 18.94,
                 "humidity_percent": 53.80,
                 "pressure_hpa": 990.83,
+                "battery_voltage": 3.92,
+                "battery_percent": 74,
             },
         ],
     }
@@ -54,12 +56,26 @@ def test_request_example_from_contract_is_accepted() -> None:
 
 def test_request_without_battery_fields_is_accepted() -> None:
     payload = make_request_payload()
-    payload["status"] = {"rssi_dbm": -61}
+    payload["measurements"][0].pop("battery_voltage")
+    payload["measurements"][0].pop("battery_percent")
+    payload["measurements"][1].pop("battery_voltage")
+    payload["measurements"][1].pop("battery_percent")
 
     model = MeasurementUploadRequest.model_validate(payload)
 
-    assert model.status.battery_voltage is None
-    assert model.status.battery_percent is None
+    assert model.measurements[0].battery_voltage is None
+    assert model.measurements[0].battery_percent is None
+    assert model.measurements[1].battery_voltage is None
+    assert model.measurements[1].battery_percent is None
+
+
+def test_request_rejects_battery_fields_in_status() -> None:
+    payload = make_request_payload()
+    payload["status"]["battery_voltage"] = 3.92
+    payload["status"]["battery_percent"] = 74
+
+    with pytest.raises(ValidationError):
+        MeasurementUploadRequest.model_validate(payload)
 
 
 def test_api_version_other_than_one_is_rejected() -> None:
@@ -113,17 +129,17 @@ def test_negative_sequence_is_rejected() -> None:
 @pytest.mark.parametrize("battery_percent", [0, 100])
 def test_battery_percent_boundary_values_are_accepted(battery_percent: int) -> None:
     payload = make_request_payload()
-    payload["status"]["battery_percent"] = battery_percent
+    payload["measurements"][0]["battery_percent"] = battery_percent
 
     model = MeasurementUploadRequest.model_validate(payload)
 
-    assert model.status.battery_percent == battery_percent
+    assert model.measurements[0].battery_percent == battery_percent
 
 
 @pytest.mark.parametrize("battery_percent", [-1, 101])
 def test_battery_percent_out_of_range_is_rejected(battery_percent: int) -> None:
     payload = make_request_payload()
-    payload["status"]["battery_percent"] = battery_percent
+    payload["measurements"][0]["battery_percent"] = battery_percent
 
     with pytest.raises(ValidationError):
         MeasurementUploadRequest.model_validate(payload)

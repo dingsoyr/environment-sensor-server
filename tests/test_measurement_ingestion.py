@@ -14,22 +14,14 @@ def make_request(
     firmware_version: str = "0.1.0",
     config_version: int = 2,
     rssi_dbm: int = -61,
-    battery_voltage: float | None = 3.92,
-    battery_percent: int | None = 74,
     measurements: list[dict] | None = None,
 ) -> MeasurementUploadRequest:
-    status: dict[str, object] = {"rssi_dbm": rssi_dbm}
-    if battery_voltage is not None:
-        status["battery_voltage"] = battery_voltage
-    if battery_percent is not None:
-        status["battery_percent"] = battery_percent
-
     payload = {
         "api_version": 1,
         "device_id": device_id,
         "firmware_version": firmware_version,
         "config_version": config_version,
-        "status": status,
+        "status": {"rssi_dbm": rssi_dbm},
         "measurements": measurements
         or [
             {
@@ -39,6 +31,8 @@ def make_request(
                 "temperature_c": 19.01,
                 "humidity_percent": 53.49,
                 "pressure_hpa": 990.79,
+                "battery_voltage": 3.95,
+                "battery_percent": 78,
             },
             {
                 "sequence": 722,
@@ -47,6 +41,8 @@ def make_request(
                 "temperature_c": 18.94,
                 "humidity_percent": 53.80,
                 "pressure_hpa": 990.83,
+                "battery_voltage": 3.92,
+                "battery_percent": 74,
             },
         ],
     }
@@ -103,7 +99,7 @@ def test_first_upload_creates_device_and_measurements(
         74,
     )
     assert measurement_rows == [
-        (721, 1_786_300_052, 3.92, 74),
+        (721, 1_786_300_052, 3.95, 78),
         (722, 1_786_303_652, 3.92, 74),
     ]
 
@@ -120,8 +116,6 @@ def test_device_status_is_updated_on_later_upload(tmp_path: Path, monkeypatch) -
             firmware_version="0.2.0",
             config_version=3,
             rssi_dbm=-58,
-            battery_voltage=3.87,
-            battery_percent=68,
             measurements=[
                 {
                     "sequence": 723,
@@ -130,6 +124,8 @@ def test_device_status_is_updated_on_later_upload(tmp_path: Path, monkeypatch) -
                     "temperature_c": 18.71,
                     "humidity_percent": 54.12,
                     "pressure_hpa": 990.25,
+                    "battery_voltage": 3.87,
+                    "battery_percent": 68,
                 }
             ],
         ),
@@ -333,6 +329,8 @@ def test_duplicate_sequence_does_not_overwrite_original_measurement(
                     "temperature_c": 19.01,
                     "humidity_percent": 53.49,
                     "pressure_hpa": 990.79,
+                    "battery_voltage": 3.92,
+                    "battery_percent": 74,
                 }
             ]
         ),
@@ -349,6 +347,8 @@ def test_duplicate_sequence_does_not_overwrite_original_measurement(
                     "temperature_c": -5.0,
                     "humidity_percent": 10.0,
                     "pressure_hpa": 800.0,
+                    "battery_voltage": 4.05,
+                    "battery_percent": 85,
                 }
             ]
         ),
@@ -366,6 +366,67 @@ def test_duplicate_sequence_does_not_overwrite_original_measurement(
         ).fetchone()
 
     assert measurement_row == (1_786_300_052, 1, 19.01, 53.49, 990.79, 3.92, 74)
+
+
+def test_batch_persists_distinct_measurement_battery_values_and_uses_highest_inserted_sequence_for_device_cache(
+    tmp_path: Path, monkeypatch
+) -> None:
+    database_path = tmp_path / "environment.db"
+    initialize_database(database_path)
+    monkeypatch.setattr("app.measurement_ingestion.time.time", lambda: 1_786_303_653)
+
+    ingest_measurement_upload(
+        make_request(
+            measurements=[
+                {
+                    "sequence": 721,
+                    "measured_at": 1_786_300_052,
+                    "timestamp_valid": True,
+                    "temperature_c": 19.01,
+                    "humidity_percent": 53.49,
+                    "pressure_hpa": 990.79,
+                    "battery_voltage": 4.05,
+                    "battery_percent": 85,
+                },
+                {
+                    "sequence": 722,
+                    "measured_at": 1_786_303_652,
+                    "timestamp_valid": True,
+                    "temperature_c": 18.94,
+                    "humidity_percent": 53.80,
+                    "pressure_hpa": 990.83,
+                },
+                {
+                    "sequence": 723,
+                    "measured_at": 1_786_307_252,
+                    "timestamp_valid": True,
+                    "temperature_c": 18.71,
+                    "humidity_percent": 54.12,
+                    "pressure_hpa": 990.25,
+                    "battery_voltage": 3.87,
+                    "battery_percent": 68,
+                },
+            ]
+        ),
+        database_path,
+    )
+
+    with connect_database(database_path) as connection:
+        device_battery = connection.execute(
+            "SELECT battery_voltage, battery_percent FROM devices WHERE device_id = ?",
+            ("sensor-a",),
+        ).fetchone()
+        measurement_rows = connection.execute(
+            "SELECT sequence, battery_voltage, battery_percent FROM measurements WHERE device_id = ? ORDER BY sequence",
+            ("sensor-a",),
+        ).fetchall()
+
+    assert device_battery == (3.87, 68)
+    assert measurement_rows == [
+        (721, 4.05, 85),
+        (722, None, None),
+        (723, 3.87, 68),
+    ]
 
 
 def test_unsorted_measurements_are_acknowledged_contiguously(
@@ -467,7 +528,26 @@ def test_battery_fields_may_be_absent(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr("app.measurement_ingestion.time.time", lambda: 1_786_303_653)
 
     ingest_measurement_upload(
-        make_request(battery_voltage=None, battery_percent=None),
+        make_request(
+            measurements=[
+                {
+                    "sequence": 721,
+                    "measured_at": 1_786_300_052,
+                    "timestamp_valid": True,
+                    "temperature_c": 19.01,
+                    "humidity_percent": 53.49,
+                    "pressure_hpa": 990.79,
+                },
+                {
+                    "sequence": 722,
+                    "measured_at": 1_786_303_652,
+                    "timestamp_valid": True,
+                    "temperature_c": 18.94,
+                    "humidity_percent": 53.80,
+                    "pressure_hpa": 990.83,
+                },
+            ]
+        ),
         database_path,
     )
 
@@ -483,6 +563,78 @@ def test_battery_fields_may_be_absent(tmp_path: Path, monkeypatch) -> None:
 
     assert battery_row == (None, None)
     assert measurement_battery_rows == [(None, None), (None, None)]
+
+
+def test_newer_inserted_measurement_without_battery_does_not_clear_existing_device_cache(
+    tmp_path: Path, monkeypatch
+) -> None:
+    database_path = tmp_path / "environment.db"
+    initialize_database(database_path)
+    monkeypatch.setattr("app.measurement_ingestion.time.time", lambda: 1_786_303_653)
+
+    ingest_measurement_upload(make_request(), database_path)
+
+    monkeypatch.setattr("app.measurement_ingestion.time.time", lambda: 1_786_307_253)
+    ingest_measurement_upload(
+        make_request(
+            measurements=[
+                {
+                    "sequence": 723,
+                    "measured_at": 1_786_307_252,
+                    "timestamp_valid": True,
+                    "temperature_c": 18.71,
+                    "humidity_percent": 54.12,
+                    "pressure_hpa": 990.25,
+                }
+            ]
+        ),
+        database_path,
+    )
+
+    with connect_database(database_path) as connection:
+        device_battery = connection.execute(
+            "SELECT battery_voltage, battery_percent FROM devices WHERE device_id = ?",
+            ("sensor-a",),
+        ).fetchone()
+
+    assert device_battery == (3.92, 74)
+
+
+def test_duplicate_measurements_do_not_mutate_device_battery_cache(
+    tmp_path: Path, monkeypatch
+) -> None:
+    database_path = tmp_path / "environment.db"
+    initialize_database(database_path)
+    monkeypatch.setattr("app.measurement_ingestion.time.time", lambda: 1_786_303_653)
+
+    ingest_measurement_upload(make_request(), database_path)
+
+    monkeypatch.setattr("app.measurement_ingestion.time.time", lambda: 1_786_307_253)
+    ingest_measurement_upload(
+        make_request(
+            measurements=[
+                {
+                    "sequence": 722,
+                    "measured_at": 1_786_399_999,
+                    "timestamp_valid": False,
+                    "temperature_c": -5.0,
+                    "humidity_percent": 10.0,
+                    "pressure_hpa": 800.0,
+                    "battery_voltage": 4.20,
+                    "battery_percent": 100,
+                }
+            ]
+        ),
+        database_path,
+    )
+
+    with connect_database(database_path) as connection:
+        device_battery = connection.execute(
+            "SELECT battery_voltage, battery_percent FROM devices WHERE device_id = ?",
+            ("sensor-a",),
+        ).fetchone()
+
+    assert device_battery == (3.92, 74)
 
 
 def test_ingestion_is_atomic_on_non_duplicate_database_failure(

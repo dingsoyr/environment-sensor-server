@@ -113,8 +113,6 @@ def make_measurement_upload_payload(*, config_version: int) -> dict:
         "config_version": config_version,
         "status": {
             "rssi_dbm": -61,
-            "battery_voltage": 3.92,
-            "battery_percent": 74,
         },
         "measurements": [
             {
@@ -124,6 +122,8 @@ def make_measurement_upload_payload(*, config_version: int) -> dict:
                 "temperature_c": 19.01,
                 "humidity_percent": 53.49,
                 "pressure_hpa": 990.79,
+                "battery_voltage": 3.92,
+                "battery_percent": 74,
             }
         ],
     }

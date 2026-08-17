@@ -34,18 +34,14 @@ def ingest_measurement_upload(
                 config_version,
                 reported_config_version,
                 last_seen_at,
-                rssi_dbm,
-                battery_voltage,
-                battery_percent
+                rssi_dbm
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(device_id) DO UPDATE SET
                 firmware_version = excluded.firmware_version,
                 reported_config_version = excluded.reported_config_version,
                 last_seen_at = excluded.last_seen_at,
-                rssi_dbm = excluded.rssi_dbm,
-                battery_voltage = excluded.battery_voltage,
-                battery_percent = excluded.battery_percent
+                rssi_dbm = excluded.rssi_dbm
             """,
             (
                 request.device_id,
@@ -55,28 +51,28 @@ def ingest_measurement_upload(
                 request.config_version,
                 server_time,
                 request.status.rssi_dbm,
-                request.status.battery_voltage,
-                request.status.battery_percent,
             ),
         )
 
-        connection.executemany(
-            """
-            INSERT INTO measurements (
-                device_id,
-                sequence,
-                measured_at,
-                timestamp_valid,
-                temperature_c,
-                humidity_percent,
-                pressure_hpa,
-                battery_voltage,
-                battery_percent
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(device_id, sequence) DO NOTHING
-            """,
-            [
+        latest_inserted_battery_measurement = None
+
+        for measurement in request.measurements:
+            insert_cursor = connection.execute(
+                """
+                INSERT INTO measurements (
+                    device_id,
+                    sequence,
+                    measured_at,
+                    timestamp_valid,
+                    temperature_c,
+                    humidity_percent,
+                    pressure_hpa,
+                    battery_voltage,
+                    battery_percent
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(device_id, sequence) DO NOTHING
+                """,
                 (
                     request.device_id,
                     measurement.sequence,
@@ -85,12 +81,37 @@ def ingest_measurement_upload(
                     measurement.temperature_c,
                     measurement.humidity_percent,
                     measurement.pressure_hpa,
-                    request.status.battery_voltage,
-                    request.status.battery_percent,
-                )
-                for measurement in request.measurements
-            ],
-        )
+                    measurement.battery_voltage,
+                    measurement.battery_percent,
+                ),
+            )
+
+            if insert_cursor.rowcount != 1:
+                continue
+
+            if measurement.battery_voltage is None and measurement.battery_percent is None:
+                continue
+
+            if (
+                latest_inserted_battery_measurement is None
+                or measurement.sequence > latest_inserted_battery_measurement.sequence
+            ):
+                latest_inserted_battery_measurement = measurement
+
+        if latest_inserted_battery_measurement is not None:
+            connection.execute(
+                """
+                UPDATE devices
+                SET battery_voltage = ?,
+                    battery_percent = ?
+                WHERE device_id = ?
+                """,
+                (
+                    latest_inserted_battery_measurement.battery_voltage,
+                    latest_inserted_battery_measurement.battery_percent,
+                    request.device_id,
+                ),
+            )
 
         persisted_rows = connection.execute(
             """
